@@ -1,1 +1,46 @@
 @import "tailwindcss";
+
+.animate-ring {
+  animation: ring 2s linear infinite;
+}
+
+.marquee-container {
+  width: 100%;
+  overflow: hidden;
+  user-select: none;
+}
+
+.marquee-content {
+  display: flex;
+  gap: 3rem;
+  width: max-content;
+  animation: marquee-scroll 30s linear infinite;
+}
+
+.marquee-content:hover {
+  animation-play-state: paused;
+}
+
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes ring {
+  0% {
+    transform: scale(1);
+    rotate: -10deg;
+  }
+  50% {
+    transform: scale(1.1);
+    rotate: 10deg;
+  }
+  100% {
+    transform: scale(1);
+    rotate: -10deg;
+  }
+}

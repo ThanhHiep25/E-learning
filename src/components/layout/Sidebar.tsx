@@ -1,36 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import {
-    Home,
-    Target,
-    Layers,
-    BookOpen,
-    Library,
-    Info,
-    Facebook,
-    Youtube,
-    Globe,
-    X,
-    ChevronDown
-} from 'lucide-react';
-
-const menuItems = [
-    { icon: <Home size={20} />, label: 'Trang chủ', path: '/' },
-    { icon: <Target size={20} />, label: 'Bứt phá vào 10', path: '/vào-10' },
-    { icon: <Layers size={20} />, label: 'Combo bức phá', path: '/combo-2026' },
-    {
-        icon: <BookOpen size={20} />,
-        label: 'Luyện thi TOEIC',
-        path: '#',
-        hasSubmenu: true,
-        submenuItems: [
-            { label: 'TOEIC 3 kỹ năng', path: '/toeic-2' },
-            { label: 'TOEIC 4 kỹ năng', path: '/toeic-4' },
-        ]
-    },
-    { icon: <Library size={20} />, label: 'Sách', path: '/books' },
-    { icon: <Info size={20} />, label: 'Giới thiệu', path: '/about' },
-];
+import { X, ChevronDown, Facebook, Youtube, Globe } from 'lucide-react';
+import { navigationConfig } from '../../config/navigation';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -45,8 +16,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             {/* Logo Section */}
             <div className="p-6 flex items-center justify-between border-b border-gray-50">
                 <div className='flex items-center gap-3'>
-                    <img src='/school.png' alt="Logo" className="w-10 h-auto object-contain" />
-                    <span className='text-xl font-bold text-gray-800 uppercase font-mono'>E-Learning</span>
+                    <img src='/idea-bulb.png' alt="Logo" className="w-10 h-auto object-contain" />
+                    <p className='text-sm md:text-sm font-bold text-gray-800 font-dancing-script-700 '>
+                        <span className='text-amber-600 bg-amber-100 p-1 px-2 rounded-full'>E</span>-Learning</p>
                 </div>
                 <button
                     onClick={onClose}
@@ -59,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             {/* Navigation */}
             <nav className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
                 <ul className="space-y-1">
-                    {menuItems.map((item, index) => (
+                    {navigationConfig.map((item, index) => (
                         <li key={index}>
                             {item.hasSubmenu ? (
                                 <div className="space-y-1">
@@ -68,7 +40,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                                         className="w-full flex items-center justify-between gap-3 px-3 py-3 rounded-xl text-gray-600 hover:bg-gray-50 transition-all group"
                                     >
                                         <div className="flex items-center gap-3">
-                                            <span className="text-gray-400 group-hover:text-red-500">{item.icon}</span>
+                                            <span className="text-gray-400 group-hover:text-red-500">
+                                                <item.icon size={20} />
+                                            </span>
                                             <span className="text-sm font-medium">{item.label}</span>
                                         </div>
                                         <ChevronDown size={14} className={`transition-transform duration-200 ${openSubmenu === item.label ? 'rotate-180' : ''}`} />
@@ -108,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                                     {({ isActive }) => (
                                         <>
                                             <span className={isActive ? 'text-red-600' : 'text-gray-400 transition-colors'}>
-                                                {item.icon}
+                                                <item.icon size={20} />
                                             </span>
                                             <span className="text-sm font-medium">{item.label}</span>
                                         </>

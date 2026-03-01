@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar.tsx';
 import Header from './Header.tsx';
+import Footer from './Footer.tsx';
 
 const MainLayout: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -25,6 +26,7 @@ const MainLayout: React.FC = () => {
                 <main className="flex-1 overflow-x-hidden">
                     <Outlet />
                 </main>
+                <Footer />
             </div>
         </div>
     );
