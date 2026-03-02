@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, ChevronLeft, ChevronRight, SlidersHorizontal, LayoutGrid, List } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
 import CourseCard from '../components/home/CourseCard';
-import { mockCourses, type Course } from '../config/mock-data';
+import { type Course } from '../config/mock-data';
+import { useCourseStore } from '../store/useCourseStore';
 
 const PAGE_SIZE = 6;
 
@@ -16,8 +17,6 @@ const CATEGORIES = [
 
 const SORT_OPTIONS = [
     { label: 'Mới nhất', value: 'latest' },
-    { label: 'Giá thấp đến cao', value: 'price-asc' },
-    { label: 'Giá cao đến thấp', value: 'price-desc' },
     { label: 'Đánh giá cao nhất', value: 'rating' }
 ];
 
@@ -26,6 +25,7 @@ const Courses: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Tất cả');
     const [sortBy, setSortBy] = useState('latest');
+    const { courses } = useCourseStore();
     const [currentPage, setCurrentPage] = useState(1);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -39,7 +39,7 @@ const Courses: React.FC = () => {
 
     // Filtering & Sorting Logic
     const filteredCourses = useMemo(() => {
-        let result = [...mockCourses];
+        let result = [...courses];
 
         // Search
         if (searchQuery) {
@@ -56,25 +56,15 @@ const Courses: React.FC = () => {
 
         // Sort
         result.sort((a, b) => {
-            if (sortBy === 'price-asc') {
-                const priceA = parseInt(a.price.replace(/[^\d]/g, ''));
-                const priceB = parseInt(b.price.replace(/[^\d]/g, ''));
-                return priceA - priceB;
-            }
-            if (sortBy === 'price-desc') {
-                const priceA = parseInt(a.price.replace(/[^\d]/g, ''));
-                const priceB = parseInt(b.price.replace(/[^\d]/g, ''));
-                return priceB - priceA;
-            }
             if (sortBy === 'rating') {
                 return b.rating - a.rating;
             }
-            // Default latest (by ID or date if available)
+            // Default latest (by ID)
             return parseInt(b.id) - parseInt(a.id);
         });
 
         return result;
-    }, [searchQuery, selectedCategory, sortBy]);
+    }, [courses, searchQuery, selectedCategory, sortBy]);
 
     // Pagination Logic
     const totalPages = Math.ceil(filteredCourses.length / PAGE_SIZE);
@@ -158,15 +148,12 @@ const Courses: React.FC = () => {
                             {/* Divider */}
                             <div className="h-px bg-gray-100"></div>
 
-                            {/* Promo Banner in Sidebar */}
-                            <div className="bg-linear-to-br from-amber-500 to-orange-600 rounded-2xl p-4 text-white overflow-hidden relative group">
-                                <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:scale-125 transition-transform duration-500">
-                                    <SlidersHorizontal size={60} />
-                                </div>
-                                <p className="text-[10px] font-bold uppercase tracking-wider mb-1">New Offer</p>
-                                <p className="text-sm font-bold mb-3">Giảm 20% cho học viên mới</p>
-                                <button className="w-full py-2 bg-white text-orange-600 rounded-lg text-xs font-bold hover:bg-opacity-90 transition-all cursor-pointer">
-                                    Lấy mã ngay
+                            {/* Support Banner in Sidebar */}
+                            <div className="bg-linear-to-br from-blue-500 to-indigo-600 rounded-2xl p-4 text-white overflow-hidden relative group">
+                                <p className="text-[10px] font-bold uppercase tracking-wider mb-1">Trợ giúp</p>
+                                <p className="text-sm font-bold mb-3">Bạn gặp khó khăn khi ghi danh?</p>
+                                <button className="w-full py-2 bg-white text-blue-600 rounded-lg text-xs font-bold hover:bg-opacity-90 transition-all cursor-pointer">
+                                    Liên hệ ngay
                                 </button>
                             </div>
                         </div>

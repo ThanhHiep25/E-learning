@@ -17,7 +17,7 @@ const Banner: React.FC = () => {
                 <p className='text-xl font-bold text-amber-400'>Học mọi lúc, mọi nơi, mọi thiết bị</p>
 
                 <div className="flex gap-2 mt-10">
-                    <button className='bg-amber-500 text-white px-6 py-4 text-xl font-bold rounded-full hover:bg-amber-600 cursor-pointer transition-all duration-200 w-fit'>Đăng ký ngay để nhận ưu đãi</button>
+                    <button className='bg-amber-500 text-white px-8 py-4 text-xl font-black rounded-full hover:bg-amber-600 cursor-pointer transition-all duration-300 shadow-xl shadow-amber-500/20 active:scale-95'>KHÁM PHÁ KHÓA HỌC NGAY</button>
                 </div>
             </div>
 

@@ -3,21 +3,24 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
     Star, Users, BookOpen, Clock, BarChart,
     CheckCircle2, ChevronDown, Play, Lock,
-    ArrowLeft, Share2, Heart, Award, ShoppingCart, ArrowRight
+    ArrowLeft, Share2, Heart, ShieldCheck, ArrowRight
 } from 'lucide-react';
-import { mockCourses } from '../config/mock-data';
-import { useCartStore } from '../store/useCartStore';
+import { useCourseStore } from '../store/useCourseStore';
+import { useEnrollmentStore } from '../store/useEnrollmentStore';
 import toast from 'react-hot-toast';
 
 const CourseDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [activeAccordion, setActiveAccordion] = useState<string | null>('m1');
-    const { addItem } = useCartStore();
+    const { courses } = useCourseStore();
+    const { enrolledCourses, enroll } = useEnrollmentStore();
 
     const course = useMemo(() => {
-        return mockCourses.find(c => c.id === id);
-    }, [id]);
+        return courses.find(c => c.id === id);
+    }, [courses, id]);
+
+    const isEnrolled = useMemo(() => enrolledCourses.some(item => item.id === id), [enrolledCourses, id]);
 
     if (!course) {
         return (
@@ -218,57 +221,52 @@ const CourseDetails: React.FC = () => {
                                 <p className="absolute bottom-4 text-white text-xs font-bold w-full text-center">Xem giới thiệu khóa học</p>
                             </div>
 
-                            {/* Price */}
+                            {/* Enrollment Info */}
                             <div className="space-y-1">
                                 <div className="flex items-baseline gap-3">
-                                    <span className="text-3xl font-black text-red-600">{course.price}</span>
-                                    {course.originalPrice && (
-                                        <span className="text-lg text-gray-400 line-through font-bold">{course.originalPrice}</span>
-                                    )}
+                                    <span className="text-2xl font-black text-amber-600 block">KHOÁ HỌC NỘI BỘ</span>
                                 </div>
-                                <p className="text-emerald-600 text-sm font-bold flex items-center gap-1">
-                                    <Clock size={14} />
-                                    Ưu đãi sắp kết thúc!
+                                <p className="text-gray-500 text-sm font-bold flex items-center gap-1 mt-1">
+                                    <ShieldCheck size={14} className="text-emerald-500" />
+                                    Dành cho sinh viên của trường
                                 </p>
                             </div>
 
                             {/* Actions */}
                             <div className="space-y-3">
-                                <button
-                                    onClick={() => {
-                                        addItem(course);
-                                        toast.success('Đã thêm vào giỏ hàng!');
-                                        navigate('/cart');
-                                    }}
-                                    className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-gray-900 font-black rounded-2xl shadow-xl shadow-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-                                >
-                                    ĐĂNG KÝ NGAY
-                                    <ArrowRight size={20} />
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        addItem(course);
-                                        toast.success('Đã thêm vào giỏ hàng!');
-                                    }}
-                                    className="w-full py-4 bg-gray-900 hover:bg-gray-800 text-white font-black rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-                                >
-                                    <ShoppingCart size={20} />
-                                    THÊM VÀO GIỎ HÀNG
-                                </button>
+                                {isEnrolled ? (
+                                    <button
+                                        onClick={() => navigate(`/course/${id}/lesson`)}
+                                        className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-2xl shadow-xl shadow-emerald-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
+                                    >
+                                        VÀO HỌC NGAY
+                                        <Play size={20} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => {
+                                            enroll(course!);
+                                            toast.success('Ghi danh thành công! Hãy bắt đầu học nhé.');
+                                            navigate('/my-learning');
+                                        }}
+                                        className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-2xl shadow-xl shadow-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
+                                    >
+                                        GHI DANH NGAY
+                                        <ArrowRight size={20} />
+                                    </button>
+                                )}
                             </div>
-
-                            <p className="text-center text-xs text-gray-400 font-medium">Đảm bảo hoàn tiền trong 30 ngày</p>
 
                             {/* Course Features */}
                             <div className="space-y-4 pt-4 border-t border-gray-100">
                                 <p className="font-bold text-gray-800 text-sm">Khóa học bao gồm:</p>
                                 <div className="space-y-3">
                                     {[
-                                        { icon: Clock, text: `${course.duration} nội dung video` },
-                                        { icon: BookOpen, text: `${course.totalLessons} bài học chuyên môn` },
-                                        { icon: BarChart, text: `Trình độ: ${course.level}` },
-                                        { icon: Award, text: 'Chứng chỉ hoàn thành' },
-                                        { icon: Users, text: 'Hỗ trợ 24/7 từ giáo viên' }
+                                        { icon: Clock, text: `Thời gian học: ${course.duration}` },
+                                        { icon: BookOpen, text: `${course.totalLessons} bài giảng/tài liệu` },
+                                        { icon: BarChart, text: `Cấp độ: ${course.level}` },
+                                        { icon: ShieldCheck, text: 'Hệ thống bảo mật nội bộ' },
+                                        { icon: Users, text: 'Hỗ trợ trực tiếp từ Giảng viên' }
                                     ].map((feature, i) => (
                                         <div key={i} className="flex items-center gap-3 text-gray-600 text-sm">
                                             <feature.icon size={18} className="text-amber-500" />

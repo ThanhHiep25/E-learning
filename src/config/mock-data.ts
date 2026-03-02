@@ -1,12 +1,23 @@
+export interface LessonAttachment {
+  id: string;
+  type: "pdf" | "image" | "video" | "link";
+  title: string;
+  url: string;
+}
+
+export interface Lesson {
+  id: string;
+  title: string;
+  duration: string;
+  isPreview: boolean;
+  videoUrl?: string;
+  attachments?: LessonAttachment[];
+}
+
 export interface CurriculumModule {
   id: string;
   title: string;
-  lessons: {
-    id: string;
-    title: string;
-    duration: string;
-    isPreview: boolean;
-  }[];
+  lessons: Lesson[];
 }
 
 export interface Course {
@@ -14,9 +25,6 @@ export interface Course {
   title: string;
   teacher: string;
   teacherAvatar?: string;
-  price: string;
-  originalPrice?: string;
-  discountBadge?: string;
   image: string;
   category: string;
   rating: number;
@@ -30,6 +38,7 @@ export interface Course {
   requirements: string[];
   curriculum: CurriculumModule[];
   tags: string[];
+  price: number;
   lastUpdated: string;
 }
 
@@ -39,9 +48,6 @@ export const mockCourses: Course[] = [
     title: "Toán học kiến thức cốt lõi ôn thi lớp 10",
     teacher: "Thầy Nguyễn Văn A",
     teacherAvatar: "https://i.pravatar.cc/150?u=a",
-    price: "499.000đ",
-    originalPrice: "899.000đ",
-    discountBadge: "-45%",
     image: "/elearning-1.jpg",
     category: "Bứt phá vào 10",
     rating: 4.9,
@@ -101,6 +107,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Toán 9", "Ôn thi vào 10", "Kiến thức cốt lõi"],
+    price: 199000,
     lastUpdated: "2024-02-15",
   },
   {
@@ -108,9 +115,6 @@ export const mockCourses: Course[] = [
     title: "Ngữ văn theo chủ đề chiến thuật ăn điểm đại trà",
     teacher: "Cô Lê Thị B",
     teacherAvatar: "https://i.pravatar.cc/150?u=b",
-    price: "399.000đ",
-    originalPrice: "650.000đ",
-    discountBadge: "-38%",
     image: "/elearning-1.jpg",
     category: "Bứt phá vào 10",
     rating: 4.8,
@@ -152,6 +156,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Ngữ văn 9", "Chiến thuật làm bài", "Văn nghị luận"],
+    price: 199000,
     lastUpdated: "2024-01-20",
   },
   {
@@ -159,9 +164,6 @@ export const mockCourses: Course[] = [
     title: "Luyện thi TOEIC 4 kỹ năng cấp tốc từ 0 - 550+",
     teacher: "Ms. Hoa TOEIC",
     teacherAvatar: "https://i.pravatar.cc/150?u=hoa",
-    price: "899.000đ",
-    originalPrice: "1.200.000đ",
-    discountBadge: "-25%",
     image: "/elearning-1.jpg",
     category: "Luyện thi TOEIC",
     rating: 5.0,
@@ -203,6 +205,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["TOEIC", "English for Career", "4 Kỹ năng"],
+    price: 0,
     lastUpdated: "2024-03-01",
   },
   {
@@ -210,9 +213,6 @@ export const mockCourses: Course[] = [
     title: "Lập trình Python từ cơ bản đến nâng cao (AI & Data)",
     teacher: "Thầy Trần C",
     teacherAvatar: "https://i.pravatar.cc/150?u=c",
-    price: "599.000đ",
-    originalPrice: "999.000đ",
-    discountBadge: "-40%",
     image: "/elearning-1.jpg",
     category: "Combo Lập trình",
     rating: 4.7,
@@ -287,6 +287,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Python", "Machine Learning", "Data Analysis"],
+    price: 0,
     lastUpdated: "2024-02-28",
   },
   {
@@ -294,9 +295,6 @@ export const mockCourses: Course[] = [
     title: "Luyện thi TOEIC 2 kỹ năng (Listening & Reading)",
     teacher: "Thầy John Smith",
     teacherAvatar: "https://i.pravatar.cc/150?u=john",
-    price: "450.000đ",
-    originalPrice: "750.000đ",
-    discountBadge: "-40%",
     image: "/elearning-1.jpg",
     category: "Luyện thi TOEIC",
     rating: 4.6,
@@ -357,6 +355,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["TOEIC", "Listening", "Reading"],
+    price: 0,
     lastUpdated: "2024-03-05",
   },
   {
@@ -364,9 +363,6 @@ export const mockCourses: Course[] = [
     title: "Tin học văn phòng chuẩn MOS Excel 2019",
     teacher: "Cô Mai Phương",
     teacherAvatar: "https://i.pravatar.cc/150?u=mai",
-    price: "299.000đ",
-    originalPrice: "500.000đ",
-    discountBadge: "-40%",
     image: "/elearning-1.jpg",
     category: "Tin học văn phòng",
     rating: 4.9,
@@ -426,6 +422,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Excel", "MOS", "Office"],
+    price: 0,
     lastUpdated: "2024-01-10",
   },
   {
@@ -433,9 +430,6 @@ export const mockCourses: Course[] = [
     title: "Tiếng Anh cho người hoàn toàn mất gốc",
     teacher: "Thầy Paul",
     teacherAvatar: "https://i.pravatar.cc/150?u=paul",
-    price: "199.000đ",
-    originalPrice: "450.000đ",
-    discountBadge: "-55%",
     image: "/elearning-1.jpg",
     category: "Luyện thi TOEIC",
     rating: 4.5,
@@ -477,6 +471,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["English", "Basic", "Beginner"],
+    price: 0,
     lastUpdated: "2024-03-10",
   },
   {
@@ -484,9 +479,6 @@ export const mockCourses: Course[] = [
     title: "Lập trình Web Fullstack với React và Node.js",
     teacher: "Thầy Hoàng Dev",
     teacherAvatar: "https://i.pravatar.cc/150?u=hoang",
-    price: "1.299.000đ",
-    originalPrice: "2.500.000đ",
-    discountBadge: "-48%",
     image: "/elearning-1.jpg",
     category: "Combo Lập trình",
     rating: 4.9,
@@ -548,6 +540,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Javascript", "React", "Fullstack"],
+    price: 0,
     lastUpdated: "2024-03-12",
   },
   {
@@ -555,9 +548,6 @@ export const mockCourses: Course[] = [
     title: "Tiếng Anh giao tiếp công sở cấp tốc",
     teacher: "Cô Hana",
     teacherAvatar: "https://i.pravatar.cc/150?u=hana",
-    price: "550.000đ",
-    originalPrice: "890.000đ",
-    discountBadge: "-38%",
     image: "/elearning-1.jpg",
     category: "Luyện thi TOEIC",
     rating: 4.7,
@@ -599,6 +589,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Communication", "Work", "Office"],
+    price: 0,
     lastUpdated: "2024-02-25",
   },
   {
@@ -606,9 +597,6 @@ export const mockCourses: Course[] = [
     title: "Vật lý lớp 9 bứt phá điểm số vào 10",
     teacher: "Thầy Hùng Lý",
     teacherAvatar: "https://i.pravatar.cc/150?u=hung",
-    price: "350.000đ",
-    originalPrice: "600.000đ",
-    discountBadge: "-42%",
     image: "/elearning-1.jpg",
     category: "Bứt phá vào 10",
     rating: 4.8,
@@ -650,6 +638,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Physics", "Grade 9"],
+    price: 0,
     lastUpdated: "2024-01-30",
   },
   {
@@ -657,9 +646,6 @@ export const mockCourses: Course[] = [
     title: "Tiếng Anh lớp 9 luyện thi vào 10 chuyên",
     teacher: "Cô Lan Anh",
     teacherAvatar: "https://i.pravatar.cc/150?u=lan",
-    price: "600.000đ",
-    originalPrice: "1.000.000đ",
-    discountBadge: "-40%",
     image: "/elearning-1.jpg",
     category: "Bứt phá vào 10",
     rating: 4.9,
@@ -701,6 +687,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["English", "Grade 9", "High Quality"],
+    price: 0,
     lastUpdated: "2024-02-10",
   },
   {
@@ -708,9 +695,6 @@ export const mockCourses: Course[] = [
     title: "Thiết kế đồ họa với Photoshop và Illustrator",
     teacher: "Thầy Minh Art",
     teacherAvatar: "https://i.pravatar.cc/150?u=minh",
-    price: "790.000đ",
-    originalPrice: "1.500.000đ",
-    discountBadge: "-47%",
     image: "/elearning-1.jpg",
     category: "Combo Lập trình",
     rating: 4.6,
@@ -770,6 +754,7 @@ export const mockCourses: Course[] = [
       },
     ],
     tags: ["Design", "Adobe", "Graphics"],
+    price: 0.0,
     lastUpdated: "2024-03-08",
   },
 ];

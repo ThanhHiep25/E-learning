@@ -1,20 +1,21 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Banner from '../components/home/Banner';
-import Countdown from '../components/home/Countdown';
 import CourseCard from '../components/home/CourseCard';
-import { mockCourses } from '../config/mock-data';
+import { useCourseStore } from '../store/useCourseStore';
 import { Sparkles, GraduationCap, Flame, ArrowRight, Users } from 'lucide-react';
 import slideShowLogo from '../config/slide-show';
 
 const Home: React.FC = () => {
     const navigate = useNavigate();
 
+    const { courses } = useCourseStore();
+
     const featuredCourses = useMemo(() => {
-        return [...mockCourses]
+        return [...courses]
             .sort((a, b) => b.students - a.students)
             .slice(0, 4);
-    }, []);
+    }, [courses]);
 
     return (
         <div className="space-y-16 pb-20 bg-gray-50/50">
@@ -22,9 +23,6 @@ const Home: React.FC = () => {
                 <Banner />
             </section>
 
-            <div className="max-w-[1440px] mx-auto px-4 md:px-8">
-                <Countdown />
-            </div>
 
             {/* Featured Courses Section */}
             <section className="max-w-[1440px] mx-auto px-4 md:px-8">
@@ -37,7 +35,7 @@ const Home: React.FC = () => {
                         <h2 className="text-3xl md:text-4xl font-black text-gray-900 leading-tight">
                             Khóa học <span className="text-red-600 underline decoration-4 underline-offset-8 decoration-red-100">Nổi bật nhất</span> 🧧
                         </h2>
-                        <p className="text-gray-500 font-medium">Lộ trình học tập bài bản, giúp bạn bứt phá điểm số chỉ sau 3 tháng</p>
+                        <p className="text-gray-500 font-medium">Lộ trình học tập bài bản, giúp bạn nâng cao kiến thức và kỹ năng thực tế</p>
                     </div>
 
                     <div className="flex flex-wrap gap-2">

@@ -3,37 +3,24 @@ import MainLayout from './components/layout/MainLayout';
 import Home from './pages/Home';
 import Courses from './pages/Courses';
 import CourseDetails from './pages/CourseDetails';
-import Cart from './pages/Cart';
-import './App.css';
+import LessonPlayer from './pages/LessonPlayer';
+import Profile from './pages/Profile';
+import LearningSchedule from './pages/LearningSchedule';
+import EnrollmentList from './pages/EnrollmentList';
+import MyLearning from './pages/MyLearning';
+import MyTests from './pages/MyTests';
+import TeacherDashboard from './pages/teacher/Dashboard';
+import StudentManagement from './pages/teacher/StudentManagement';
+import QuizManagement from './pages/teacher/QuizManagement';
+import TeacherLayout from './components/layout/TeacherLayout';
+import CourseEditor from './pages/teacher/CourseEditor';
+import ContentEditor from './pages/teacher/ContentEditor';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
-import { ChevronUp, Phone } from 'lucide-react';
-import { useState } from 'react';
-import VirtualBot from './components/common/VirtualBot';
 import { AuthProvider } from './context/AuthContext';
+import './App.css';
 
 function App() {
-
-  const [showScrollTop, setShowScrollTop] = useState(false);
-
-  //Scroll to top
-  const scrollToTop = () => {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    });
-
-  };
-
-  //Show scroll to top button when scroll down
-  window.addEventListener('scroll', () => {
-    if (window.scrollY > 100) {
-      setShowScrollTop(true);
-    } else {
-      setShowScrollTop(false);
-    }
-  });
-
-
   return (
     <AuthProvider>
       <BrowserRouter>
@@ -42,44 +29,79 @@ function App() {
             <Route index element={<Home />} />
             <Route path="courses" element={<Courses />} />
             <Route path="course/:id" element={<CourseDetails />} />
-            <Route path="cart" element={<Cart />} />
+            <Route path="registrations" element={<EnrollmentList />} />
+            <Route
+              path="/my-learning"
+              element={
+                <ProtectedRoute allowedRoles={['STUDENT', 'TEACHER', 'ADMIN']}>
+                  <MyLearning />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/bai-kiem-tra"
+              element={
+                <ProtectedRoute allowedRoles={['STUDENT', 'TEACHER', 'ADMIN']}>
+                  <MyTests />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/lich-hoc"
+              element={
+                <ProtectedRoute>
+                  <LearningSchedule />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/course/:id/lesson"
+              element={
+                <ProtectedRoute>
+                  <LessonPlayer />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/course/:id/lesson/:lessonId"
+              element={
+                <ProtectedRoute>
+                  <LessonPlayer />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<div className="p-10 text-center font-bold text-gray-500">Coming Soon...</div>} />
+          </Route>
+
+          {/* Teacher Routes moved OUTSIDE MainLayout to have their own standalone Layout */}
+          <Route
+            path="/teacher"
+            element={
+              <ProtectedRoute allowedRoles={['TEACHER', 'ADMIN']}>
+                <TeacherLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<TeacherDashboard />} />
+            <Route path="dashboard" element={<TeacherDashboard />} />
+            <Route path="students" element={<StudentManagement />} />
+            <Route path="quizzes" element={<QuizManagement />} />
+            <Route path="courses" element={<TeacherDashboard />} />
+            <Route path="create-course" element={<CourseEditor />} />
+            <Route path="edit-course/:id" element={<CourseEditor />} />
+            <Route path="content-editor/:id" element={<ContentEditor />} />
           </Route>
         </Routes>
 
-        <VirtualBot />
         <Toaster position="bottom-left" reverseOrder={false} />
-
-        {/* Floating Zalo Button */}
-        <div className="fixed bottom-30 right-6 z-30 group">
-          <div className="absolute -inset-2 bg-blue-400/20 rounded-full blur-xl group-hover:bg-blue-400/40 transition-all opacity-0 group-hover:opacity-100"></div>
-          <div className="relative w-14 h-14 bg-blue-500 rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
-            <img src="https://cdn.haitrieu.com/wp-content/uploads/2022/01/Logo-Zalo-Arc.png" alt="Zalo" className="w-8 h-8 object-contain mb-0.5" />
-          </div>
-        </div>
-
-        {/* Floating Phone Button */}
-        <div className="fixed bottom-50 right-6 z-30 group">
-          <div className="absolute -inset-2 bg-green-400/20 rounded-full blur-xl group-hover:bg-green-400/40 transition-all opacity-0 group-hover:opacity-100"></div>
-          <div className="relative w-14 h-14 bg-green-500 rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
-            <Phone />
-          </div>
-        </div>
-
-        {/* Scroll to top button */}
-        {
-          showScrollTop && (
-            <button
-              onClick={scrollToTop}
-              className="fixed bottom-6 right-6 z-30 group"
-            >
-              <div className="absolute -inset-2 bg-blue-400/20 rounded-full blur-xl group-hover:bg-blue-400/40 transition-all opacity-0 group-hover:opacity-100"></div>
-              <div className="relative w-14 h-14 bg-blue-500/50 backdrop-blur-sm rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
-                <ChevronUp />
-              </div>
-            </button>
-          )
-        }
       </BrowserRouter>
     </AuthProvider>
   );
