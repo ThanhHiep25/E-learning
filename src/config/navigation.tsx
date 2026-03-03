@@ -3,7 +3,6 @@ import {
     Calendar,
     Library,
     ClipboardList,
-    Info,
     type LucideIcon,
     MessageSquare
 } from 'lucide-react';

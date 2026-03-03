@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft, Save, Trash2,
-    BookOpen, BarChart, Clock, Hash,
+    BarChart, Clock, Hash,
     Image as ImageIcon, Layout, Plus, X, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useCourseStore } from '../../store/useCourseStore';
