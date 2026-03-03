@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
     User as UserIcon, Mail, Phone, MapPin, Calendar,
@@ -14,6 +14,11 @@ const Profile: React.FC = () => {
     const { courses } = useCourseStore();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('learning');
+
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [activeTab]);
+
 
     if (!user) {
         return (
