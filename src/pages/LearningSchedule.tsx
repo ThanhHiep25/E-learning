@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     ChevronRight, ChevronLeft,
-    CalendarCheck, Zap, Star
+    CalendarCheck, Zap
 } from 'lucide-react';
 import { mockSchedule, type ScheduleItem } from '../config/schedule-data';
 

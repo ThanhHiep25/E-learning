@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Timer, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 
 const Countdown: React.FC = () => {
     const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number }>({

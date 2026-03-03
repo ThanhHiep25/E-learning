@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
     Plus, Trash2, Edit3, GripVertical,
     Video, ChevronDown,
-    ChevronUp, Save, ArrowLeft, Layout,
+    Save, ArrowLeft, Layout,
     FileText, Image as ImageIcon, Link as LinkIcon,
-    File as FileIcon, X, Check, AlertCircle, Eye, EyeOff
+    File as FileIcon, X, Eye, EyeOff
 } from 'lucide-react';
 import { useCourseStore } from '../../store/useCourseStore';
 import { type CurriculumModule, type Lesson, type LessonAttachment } from '../../config/mock-data';
