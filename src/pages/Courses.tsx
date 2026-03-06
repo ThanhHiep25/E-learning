@@ -5,15 +5,10 @@ import CourseCard from '../components/home/CourseCard';
 import { type Course } from '../config/mock-data';
 import { useCourseStore } from '../store/useCourseStore';
 
-const PAGE_SIZE = 6;
+import { categoryService, type BECategory } from '../api/categoryService';
+import toast from 'react-hot-toast';
 
-const CATEGORIES = [
-    'Tất cả',
-    'Bứt phá vào 10',
-    'Luyện thi TOEIC',
-    'Combo Lập trình',
-    'Tin học văn phòng'
-];
+const PAGE_SIZE = 6;
 
 const SORT_OPTIONS = [
     { label: 'Mới nhất', value: 'latest' },
@@ -23,19 +18,38 @@ const SORT_OPTIONS = [
 const Courses: React.FC = () => {
     const [searchParams] = useSearchParams();
     const [searchQuery, setSearchQuery] = useState('');
+    const [categories, setCategories] = useState<BECategory[]>([]);
     const [selectedCategory, setSelectedCategory] = useState('Tất cả');
     const [sortBy, setSortBy] = useState('latest');
     const { courses } = useCourseStore();
     const [currentPage, setCurrentPage] = useState(1);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [isCatLoading, setIsCatLoading] = useState(true);
+
+    // Fetch Categories
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await categoryService.getCategories();
+                if (response.success && response.data) {
+                    setCategories(response.data.categories);
+                }
+            } catch (error) {
+                toast.error('Không thể tải danh mục');
+            } finally {
+                setIsCatLoading(false);
+            }
+        };
+        fetchCategories();
+    }, []);
 
     // Sync state with URL params if any
     useEffect(() => {
         const cat = searchParams.get('category');
-        if (cat && CATEGORIES.includes(cat)) {
+        if (cat) {
             setSelectedCategory(cat);
         }
-    }, [searchParams]);
+    }, [searchParams, categories]);
 
     // Filtering & Sorting Logic
     const filteredCourses = useMemo(() => {
@@ -130,18 +144,35 @@ const Courses: React.FC = () => {
                             <div className="space-y-3">
                                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-1">Chủ đề</p>
                                 <div className="space-y-1">
-                                    {CATEGORIES.map(cat => (
-                                        <button
-                                            key={cat}
-                                            onClick={() => setSelectedCategory(cat)}
-                                            className={`cursor-pointer w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory === cat
-                                                ? 'bg-amber-50 text-amber-600'
-                                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                                }`}
-                                        >
-                                            {cat}
-                                        </button>
-                                    ))}
+                                    <button
+                                        onClick={() => setSelectedCategory('Tất cả')}
+                                        className={`cursor-pointer w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory === 'Tất cả'
+                                            ? 'bg-amber-50 text-amber-600'
+                                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                            }`}
+                                    >
+                                        Tất cả
+                                    </button>
+                                    {isCatLoading ? (
+                                        <div className="space-y-2 p-4">
+                                            {[1, 2, 3].map(i => (
+                                                <div key={i} className="h-8 bg-gray-50 animate-pulse rounded-lg"></div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        categories.map(cat => (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => setSelectedCategory(cat.name)}
+                                                className={`cursor-pointer w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory === cat.name
+                                                    ? 'bg-amber-50 text-amber-600'
+                                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                                    }`}
+                                            >
+                                                {cat.name}
+                                            </button>
+                                        ))
+                                    )}
                                 </div>
                             </div>
 
