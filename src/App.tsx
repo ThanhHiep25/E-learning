@@ -12,10 +12,13 @@ import MyTests from './pages/MyTests';
 import TeacherDashboard from './pages/teacher/Dashboard';
 import StudentManagement from './pages/teacher/StudentManagement';
 import QuizManagement from './pages/teacher/QuizManagement';
+import TeacherStatistics from './pages/teacher/Statistics';
 import TeacherLayout from './components/layout/TeacherLayout';
 import CourseEditor from './pages/teacher/CourseEditor';
 import ContentEditor from './pages/teacher/ContentEditor';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import ResetPassword from './pages/ResetPassword';
+import CategoryManagement from './pages/admin/CategoryManagement';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import './App.css';
@@ -90,8 +93,9 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<TeacherDashboard />} />
+            <Route index element={<TeacherStatistics />} />
             <Route path="dashboard" element={<TeacherDashboard />} />
+            <Route path="statistics" element={<TeacherStatistics />} />
             <Route path="students" element={<StudentManagement />} />
             <Route path="quizzes" element={<QuizManagement />} />
             <Route path="courses" element={<TeacherDashboard />} />
@@ -99,6 +103,19 @@ function App() {
             <Route path="edit-course/:id" element={<CourseEditor />} />
             <Route path="content-editor/:id" element={<ContentEditor />} />
           </Route>
+
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <TeacherLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="categories" element={<CategoryManagement />} />
+          </Route>
+
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Routes>
 
         <Toaster position="bottom-left" reverseOrder={false} />

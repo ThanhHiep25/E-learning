@@ -1,31 +1,70 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users, Plus, BookOpen, Clock,
     MoreVertical, Edit3, Trash2, ExternalLink,
     BarChart3, Activity, GraduationCap
 } from 'lucide-react';
-import { useCourseStore } from '../../store/useCourseStore';
 import { useAuth } from '../../context/AuthContext';
+import { teacherService, type BECourse } from '../../api/teacherService';
+import toast from 'react-hot-toast';
 
 const TeacherDashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { courses } = useCourseStore();
     const { user } = useAuth();
+    const [courses, setCourses] = useState<BECourse[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // In a real app, courses would have a teacherId. 
-    // Here we'll filter by teacher name matching user fullName or just show all for demo if needed.
-    // For this LMS demo, let's assume the teacher sees courses where they are the 'teacher'.
-    const teacherCourses = useMemo(() => {
-        return courses.filter(c => c.teacher === user?.fullName);
-    }, [courses, user]);
+    useEffect(() => {
+        const fetchCourses = async () => {
+            try {
+                const response = await teacherService.getCourses();
+                if (response.success && response.data) {
+                    setCourses(response.data.courses);
+                } else {
+                    toast.error(response.message || 'Không thể tải danh sách khóa học');
+                }
+            } catch (error) {
+                console.error(error);
+                toast.error('Lỗi kết nối máy chủ');
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-    const stats = [
-        { label: 'Tổng số khóa học', value: teacherCourses.length, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { label: 'Tổng số sinh viên', value: teacherCourses.reduce((acc, c) => acc + c.students, 0).toLocaleString(), icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-        { label: 'Đánh giá trung bình', value: (teacherCourses.reduce((acc, c) => acc + c.rating, 0) / (teacherCourses.length || 1)).toFixed(1), icon: Activity, color: 'text-amber-600', bg: 'bg-amber-50' },
+        fetchCourses();
+    }, []);
+
+    const handleDeleteCourse = async (id: string) => {
+        if (window.confirm('Bạn có chắc chắn muốn xóa khóa học này?')) {
+            try {
+                const response = await teacherService.deleteCourse(id);
+                if (response.success) {
+                    toast.success('Đã xóa khóa học');
+                    setCourses(courses.filter(c => c.id !== id));
+                } else {
+                    toast.error(response.message || 'Không thể xóa khóa học');
+                }
+            } catch (error) {
+                toast.error('Lỗi khi xóa khóa học');
+            }
+        }
+    };
+
+    const stats = useMemo(() => [
+        { label: 'Tổng số khóa học', value: courses.length, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'Tổng số sinh viên', value: '1,250', icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: 'Đánh giá trung bình', value: '4.8', icon: Activity, color: 'text-amber-600', bg: 'bg-amber-50' },
         { label: 'Giờ giảng dạy', value: '128+', icon: Clock, color: 'text-purple-600', bg: 'bg-purple-50' },
-    ];
+    ], [courses]);
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full">
@@ -33,11 +72,11 @@ const TeacherDashboard: React.FC = () => {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                     <div>
-                        <h1 className="text-3xl font-black text-gray-900 flex items-center gap-3">
+                        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                             <GraduationCap size={32} className="text-amber-500" />
                             Bảng điều khiển Giảng viên
                         </h1>
-                        <p className="text-gray-500 font-medium mt-1">Chào mừng quay trở lại, {user?.fullName}!</p>
+                        <p className="text-gray-500 font-medium mt-1">Chào mừng quay trở lại, {(user as any)?.name || user?.fullName || 'Giảng viên'}!</p>
                     </div>
                     <button
                         onClick={() => navigate('/teacher/create-course')}
@@ -59,7 +98,7 @@ const TeacherDashboard: React.FC = () => {
                                 <BarChart3 size={20} className="text-gray-200" />
                             </div>
                             <p className="text-gray-500 text-sm font-bold uppercase tracking-wider">{stat.label}</p>
-                            <h3 className="text-2xl font-black text-gray-900 mt-1">{stat.value}</h3>
+                            <h3 className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</h3>
                         </div>
                     ))}
                 </div>
@@ -83,34 +122,34 @@ const TeacherDashboard: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {teacherCourses.length > 0 ? teacherCourses.map((course) => (
+                                {courses.length > 0 ? courses.map((course) => (
                                     <tr key={course.id} className="hover:bg-gray-50/50 transition-colors group">
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-16 h-10 rounded-lg overflow-hidden bg-gray-100 shrink-0 shadow-sm">
-                                                    <img src={course.image} alt={course.title} className="w-full h-full object-cover" />
+                                                    <img src={'/elearning-1.jpg'} alt={course.title} className="w-full h-full object-cover" />
                                                 </div>
                                                 <div>
                                                     <h4 className="text-sm font-bold text-gray-900 group-hover:text-amber-600 transition-colors line-clamp-1">{course.title}</h4>
-                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{course.category}</p>
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{course.categoryId ? `ID: ${course.categoryId}` : 'Chưa phân loại'}</p>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-8 py-6">
-                                            <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-tighter">
-                                                Đang hoạt động
+                                            <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-tighter ${course.published ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                                                {course.published ? 'Đang hoạt động' : 'Bản nháp'}
                                             </span>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
                                                 <Users size={14} className="text-blue-500" />
-                                                {course.students}
+                                                {'0'}
                                             </div>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-1.5 text-sm font-bold text-amber-500">
                                                 <Activity size={14} />
-                                                {course.rating}
+                                                {'0'}
                                             </div>
                                         </td>
                                         <td className="px-8 py-6 text-right">
@@ -137,6 +176,7 @@ const TeacherDashboard: React.FC = () => {
                                                     <Edit3 size={18} />
                                                 </button>
                                                 <button
+                                                    onClick={() => handleDeleteCourse(course.id)}
                                                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                                                     title="Xóa"
                                                 >
