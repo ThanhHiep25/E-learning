@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Banner from '../components/home/Banner';
 import CourseCard from '../components/home/CourseCard';
@@ -9,13 +9,35 @@ import slideShowLogo from '../config/slide-show';
 const Home: React.FC = () => {
     const navigate = useNavigate();
 
-    const { courses } = useCourseStore();
+    const { courses, loadCourses } = useCourseStore();
+
+    useEffect(() => {
+        loadCourses();
+    }, []);
 
     const featuredCourses = useMemo(() => {
         return [...courses]
             .sort((a, b) => b.students - a.students)
             .slice(0, 4);
     }, [courses]);
+
+    const categories = useMemo(() => {
+        const set = new Set<string>();
+        for (const c of courses) {
+            const cat = String((c as any)?.category || '').trim();
+            if (cat) set.add(cat);
+        }
+        return ['Tất cả', ...Array.from(set).slice(0, 6)];
+    }, [courses]);
+
+    const totalLearners = useMemo(() => {
+        const total = courses.reduce((sum, c) => sum + Number((c as any)?.students ?? 0), 0);
+        return Number.isFinite(total) ? Math.max(0, total) : 0;
+    }, [courses]);
+
+    const totalLearnersText = totalLearners > 0
+        ? `${totalLearners.toLocaleString()} học viên`
+        : 'nhiều học viên';
 
     return (
         <div className="space-y-16 pb-20 bg-gray-50/50">
@@ -39,7 +61,7 @@ const Home: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                        {['Tất cả', 'Bứt phá vào 10', 'Luyện thi TOEIC', 'Combo Lập trình'].map((cat, index) => (
+                        {categories.map((cat, index) => (
                             <button
                                 key={cat}
                                 onClick={() => navigate(cat === 'Tất cả' ? '/courses' : `/courses?category=${cat}`)}
@@ -95,7 +117,7 @@ const Home: React.FC = () => {
                             <Users size={32} />
                         </div>
                         <h4 className="text-xl font-bold text-gray-500">Cộng đồng học tập</h4>
-                        <p className="text-gray-500 text-sm leading-relaxed">Hỗ trợ 24/7, cùng trao đổi và học hỏi với hơn 50,000 học viên mỗi năm.</p>
+                        <p className="text-gray-500 text-sm leading-relaxed">Hỗ trợ 24/7, cùng trao đổi và học hỏi với {totalLearnersText}.</p>
                     </div>
                 </div>
             </section>
@@ -107,7 +129,7 @@ const Home: React.FC = () => {
                         Đối tác đồng hành cùng chúng tôi
                     </h2>
                     <p className="text-center text-gray-500 text-xs mt-2">
-                        Hơn 50,000 học viên đã tin tưởng và chọn chúng tôi
+                        {totalLearnersText} đã tin tưởng và chọn chúng tôi
                     </p>
 
                     <hr className="max-w-3xl mx-auto my-8 border-amber-200" />

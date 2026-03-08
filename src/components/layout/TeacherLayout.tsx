@@ -1,30 +1,35 @@
-import React, { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
+    BarChart3,
     BookOpen,
     Users,
     FileText,
     LogOut,
     Menu,
     X,
-    ChevronLeft,
-    Layers
+    ChevronLeft
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const TeacherLayout: React.FC = () => {
     const { user, logout } = useAuth();
+    const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+    useEffect(() => {
+        if (!user) {
+            navigate('/');
+        }
+    }, [user, navigate]);
+
     const menuItems = [
-        { label: 'Thống kê chính', path: '/teacher/statistics', icon: LayoutDashboard },
-        { label: 'Quản lý Khóa học', path: '/teacher/dashboard', icon: BookOpen },
+        { label: 'Thống kê chính', path: '/teacher/dashboard', icon: LayoutDashboard },
+        { label: 'Thống kê chi tiết', path: '/teacher/statistics', icon: BarChart3 },
+        { label: 'Quản lý Khóa học', path: '/teacher/courses', icon: BookOpen },
         { label: 'Quản lý Học viên', path: '/teacher/students', icon: Users },
         { label: 'Đề thi & Kiểm tra', path: '/teacher/quizzes', icon: FileText },
-        ...(user?.role === 'ADMIN' ? [
-            { label: 'Cơ cấu danh mục', path: '/admin/categories', icon: Layers }
-        ] : [])
     ];
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -68,7 +73,7 @@ const TeacherLayout: React.FC = () => {
                             to={item.path}
                             onClick={() => setIsSidebarOpen(false)}
                             className={({ isActive }) => `
-                                flex items-center gap-4 px-6 py-4 rounded-2xl text-md font-bold transition-all
+                               flex items-center gap-4 px-6 py-4 rounded-2xl text-md font-bold transition-all
                                 ${isActive
                                     ? 'bg-amber-500 text-white shadow-xl shadow-amber-500/20 translate-x-2'
                                     : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -84,20 +89,26 @@ const TeacherLayout: React.FC = () => {
                 <div className="mt-auto space-y-6 pt-10 border-t border-white/5">
                     <div className="flex items-center gap-4 px-4">
                         <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-bold text-white ">{user?.fullName || 'Teacher'}</h4>
-                            <p className="text-[10px] mt-2 font-black text-slate-500">{user?.role}</p>
+                            <h4 className="text-sm font-black text-white truncate">{user?.fullName || 'Teacher'}</h4>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{user?.role}</p>
                         </div>
                     </div>
 
                     <button
-                        onClick={() => logout()}
-                        className="w-full flex cursor-pointer items-center gap-4 px-6 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all text-red-400 hover:bg-red-500/10"
+                        onClick={() => {
+                            logout();
+                            navigate('/');
+                        }}
+                        className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all text-red-400 hover:bg-red-500/10"
                     >
                         <LogOut size={18} />
                         Đăng xuất
                     </button>
 
-                    <NavLink to="/" className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white text-center flex items-center justify-center gap-2 transition-colors">
+                    <NavLink
+                        to="/"
+                        className="text-[10px] border border-gray-600 p-2 rounded-md font-black text-slate-500 uppercase tracking-widest hover:text-white text-center flex items-center justify-center gap-2 transition-colors"
+                    >
                         <ChevronLeft size={12} /> Quay lại trang chủ
                     </NavLink>
                 </div>
@@ -111,7 +122,7 @@ const TeacherLayout: React.FC = () => {
                         <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black text-xs italic">
                             L<span className="text-amber-500">M</span>
                         </div>
-                        <h2 className="text-sm font-black text-gray-900 uppercase tracking-widest italic">Management</h2>
+                        <h2 className="text-sm font-bold text-gray-900 uppercase tracking-tight">Teacher LM</h2>
                     </div>
                     <button
                         onClick={toggleSidebar}

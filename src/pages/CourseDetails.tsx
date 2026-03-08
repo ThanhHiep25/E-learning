@@ -8,19 +8,42 @@ import {
 import { useCourseStore } from '../store/useCourseStore';
 import { useEnrollmentStore } from '../store/useEnrollmentStore';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 const CourseDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [activeAccordion, setActiveAccordion] = useState<string | null>('m1');
-    const { courses } = useCourseStore();
-    const { enrolledCourses, enroll } = useEnrollmentStore();
+    const { courses, loadCourseDetail, getCurriculumIndex } = useCourseStore();
+    const { enrolledCourses, enrollCourse, syncEnrollments } = useEnrollmentStore();
+    const { user } = useAuth();
 
     const course = useMemo(() => {
         return courses.find(c => c.id === id);
     }, [courses, id]);
 
+    const curriculumIndex = useMemo(() => {
+        if (!id) return undefined;
+        return getCurriculumIndex(String(id));
+    }, [getCurriculumIndex, id, course?.curriculum]);
+
     const isEnrolled = useMemo(() => enrolledCourses.some(item => item.id === id), [enrolledCourses, id]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        if (!course || !course.curriculum || course.curriculum.length === 0) {
+            loadCourseDetail(id);
+        }
+
+        if (user?.role === 'STUDENT') {
+            syncEnrollments();
+        }
+    }, [id, course?.curriculum?.length, user?.role, syncEnrollments]);
+
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
 
     if (!course) {
         return (
@@ -39,12 +62,6 @@ const CourseDetails: React.FC = () => {
     const toggleAccordion = (id: string) => {
         setActiveAccordion(activeAccordion === id ? null : id);
     };
-
-
-    useEffect(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, []);
-
 
     return (
         <div className="min-h-screen bg-gray-50/50 pb-20">
@@ -146,12 +163,19 @@ const CourseDetails: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <h2 className="text-2xl font-black text-gray-900">Nội dung khóa học</h2>
                                 <p className="text-sm font-bold text-gray-500">
-                                    {course.curriculum.length} chương • {course.totalLessons} bài học
+                                    {(curriculumIndex?.moduleIds.length ?? course.curriculum.length)} chương • {(curriculumIndex?.lessonIds.length ?? course.totalLessons)} bài học
                                 </p>
                             </div>
 
                             <div className="space-y-3">
-                                {course.curriculum.map((module) => (
+                                {(curriculumIndex
+                                    ? curriculumIndex.moduleIds.map((moduleId) => {
+                                        const module = curriculumIndex.modulesById[moduleId];
+                                        const lessons = module.lessonIds.map((lessonId) => curriculumIndex.lessonsById[lessonId]);
+                                        return { module, lessons };
+                                    })
+                                    : course.curriculum.map((module) => ({ module, lessons: module.lessons }))
+                                ).map(({ module, lessons }) => (
                                     <div key={module.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                                         <button
                                             onClick={() => toggleAccordion(module.id)}
@@ -166,7 +190,7 @@ const CourseDetails: React.FC = () => {
 
                                         <div className={`transition-all duration-300 ease-in-out ${activeAccordion === module.id ? 'max-h-[1000px] border-t border-gray-50' : 'max-h-0'}`}>
                                             <div className="p-2 space-y-1">
-                                                {module.lessons.map((lesson) => (
+                                                {lessons.map((lesson) => (
                                                     <div key={lesson.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-amber-50 group transition-all">
                                                         <div className="flex items-center gap-3">
                                                             {lesson.isPreview ? (
@@ -244,10 +268,22 @@ const CourseDetails: React.FC = () => {
                                     </button>
                                 ) : (
                                     <button
-                                        onClick={() => {
-                                            enroll(course!);
-                                            toast.success('Ghi danh thành công! Hãy bắt đầu học nhé.');
-                                            navigate('/my-learning');
+                                        onClick={async () => {
+                                            if (!id) return;
+                                            if ((course?.price ?? 0) > 0) {
+                                                navigate(`/payment?courseId=${encodeURIComponent(id)}`);
+                                                return;
+                                            }
+                                            try {
+                                                await enrollCourse(id);
+                                                toast.success('Ghi danh thành công! Hãy bắt đầu học nhé.');
+                                                // Đợi một chút để đảm bảo store đã được cập nhật hoàn toàn
+                                                setTimeout(() => {
+                                                    navigate('/my-learning');
+                                                }, 300);
+                                            } catch (err) {
+                                                toast.error(err instanceof Error ? err.message : 'Ghi danh thất bại');
+                                            }
                                         }}
                                         className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-2xl shadow-xl shadow-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
                                     >

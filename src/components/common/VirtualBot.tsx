@@ -35,7 +35,7 @@ const VirtualBot: React.FC = () => {
                     setShowBubble(true);
                 }, 600);
             }
-        }, 10000);
+        }, 100000);
 
         return () => {
             clearTimeout(entryTimer);

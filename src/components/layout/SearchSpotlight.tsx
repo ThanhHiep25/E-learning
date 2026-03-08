@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, X, Star, Users, ArrowRight } from 'lucide-react';
-import { mockCourses, type Course } from '../../config/mock-data';
+import { useCourseStore } from '../../store/useCourseStore';
+import { type FrontendCourse } from '../../services/course.service';
 
 interface SearchSpotlightProps {
     isOpen: boolean;
@@ -11,13 +12,15 @@ interface SearchSpotlightProps {
 const SearchSpotlight: React.FC<SearchSpotlightProps> = ({ isOpen, onClose }) => {
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
-    const [results, setResults] = useState<Course[]>([]);
+    const [results, setResults] = useState<FrontendCourse[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
+    const { courses, loadCourses } = useCourseStore();
 
     useEffect(() => {
         if (isOpen) {
             setTimeout(() => inputRef.current?.focus(), 100);
             document.body.style.overflow = 'hidden';
+            loadCourses();
         } else {
             document.body.style.overflow = 'unset';
             setSearchQuery('');
@@ -27,7 +30,7 @@ const SearchSpotlight: React.FC<SearchSpotlightProps> = ({ isOpen, onClose }) =>
 
     useEffect(() => {
         if (searchQuery.trim().length > 1) {
-            const filtered = mockCourses.filter(course =>
+            const filtered = courses.filter(course =>
                 course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 course.teacher.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 course.category.toLowerCase().includes(searchQuery.toLowerCase())
@@ -36,7 +39,7 @@ const SearchSpotlight: React.FC<SearchSpotlightProps> = ({ isOpen, onClose }) =>
         } else {
             setResults([]);
         }
-    }, [searchQuery]);
+    }, [searchQuery, courses]);
 
     if (!isOpen) return null;
 
@@ -81,7 +84,7 @@ const SearchSpotlight: React.FC<SearchSpotlightProps> = ({ isOpen, onClose }) =>
                                 <span>Gợi ý tìm kiếm </span>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {mockCourses.slice(0, 4).map((course) => (
+                                {courses.slice(0, 4).map((course) => (
                                     <button
                                         key={course.id}
                                         className="flex items-center gap-5 p-5 bg-white rounded-3xl border border-gray-100 hover:border-amber-200 hover:shadow-lg hover:shadow-amber-100/30 transition-all duration-300 group text-left"

@@ -1,7 +1,10 @@
 import { CheckCircle2 } from 'lucide-react';
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Banner: React.FC = () => {
+    const navigate = useNavigate();
+
     return (
         <div className="relative w-full overflow-hidden h-[60vh] md:h-[92vh]">
             <div className="absolute top-0 left-0 w-full h-full bg-linear-to-r from-black/80 via-black/50 to-black/10"></div>
@@ -17,7 +20,12 @@ const Banner: React.FC = () => {
                 <p className='text-xl font-bold text-amber-400'>Học mọi lúc, mọi nơi, mọi thiết bị</p>
 
                 <div className="flex gap-2 mt-10">
-                    <button className='bg-amber-500 text-white px-8 py-4 text-xl font-black rounded-full hover:bg-amber-600 cursor-pointer transition-all duration-300 shadow-xl shadow-amber-500/20 active:scale-95'>KHÁM PHÁ KHÓA HỌC NGAY</button>
+                    <button
+                        onClick={() => navigate('/courses')}
+                        className='bg-amber-500 text-white px-8 py-4 text-xl font-black rounded-full hover:bg-amber-600 cursor-pointer transition-all duration-300 shadow-xl shadow-amber-500/20 active:scale-95'
+                    >
+                        KHÁM PHÁ KHÓA HỌC NGAY
+                    </button>
                 </div>
             </div>
 

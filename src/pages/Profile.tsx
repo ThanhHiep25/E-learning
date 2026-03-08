@@ -8,16 +8,93 @@ import {
 } from 'lucide-react';
 import { useCourseStore } from '../store/useCourseStore';
 import { useNavigate } from 'react-router-dom';
+import { enrollmentService, type BackendEnrollment } from '../services/enrollment.service';
+import { authService } from '../services/auth.service';
+
+async function compressImage(file: File, opts: { maxSize: number; quality: number }): Promise<File> {
+    if (!String(file.type || '').startsWith('image/')) return file;
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = URL.createObjectURL(file);
+    });
+
+    const { maxSize, quality } = opts;
+    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    URL.revokeObjectURL(img.src);
+
+    const blob: Blob = await new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b || file), 'image/jpeg', quality);
+    });
+
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
 
 const Profile: React.FC = () => {
-    const { user } = useAuth();
-    const { courses } = useCourseStore();
+    const { user, updateUser } = useAuth();
+    useCourseStore();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('learning');
+    const [enrollments, setEnrollments] = useState<BackendEnrollment[]>([]);
+    const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+    const [isEditOpen, setIsEditOpen] = useState(false);
+    const [editFullName, setEditFullName] = useState('');
+    const [editPhone, setEditPhone] = useState('');
+    const [editAvatar, setEditAvatar] = useState('');
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [editError, setEditError] = useState('');
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [activeTab]);
+
+    useEffect(() => {
+        const load = async () => {
+            if (!user) return;
+            try {
+                setLoadingEnrollments(true);
+                const list = await enrollmentService.listMyEnrollments();
+                setEnrollments(Array.isArray(list) ? list : []);
+            } catch {
+                setEnrollments([]);
+            } finally {
+                setLoadingEnrollments(false);
+            }
+        };
+
+        load();
+    }, [user]);
+
+    useEffect(() => {
+        if (!user) return;
+        if (!isEditOpen) {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+                setPreviewUrl(null);
+            }
+            return;
+        }
+        setEditFullName(user.fullName || '');
+        setEditPhone(user.phone || '');
+        setEditAvatar(user.avatar || '');
+        setEditError('');
+    }, [isEditOpen, user]);
+
+
 
 
     if (!user) {
@@ -36,7 +113,24 @@ const Profile: React.FC = () => {
         );
     }
 
-    const enrolledCourses = courses.filter(c => user.enrolledCourses.includes(c.id));
+    const enrolledCourses = enrollments
+        .map((en) => {
+            const course = en.Course;
+            if (!course) return null;
+            return {
+                enrollment: en,
+                course,
+            };
+        })
+        .filter(Boolean) as { enrollment: BackendEnrollment; course: NonNullable<BackendEnrollment['Course']> }[];
+
+    const joinDateLabel = (() => {
+        const raw = (user as any)?.joinDate;
+        if (!raw) return '';
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return String(raw);
+        return d.toLocaleDateString('vi-VN');
+    })();
 
     return (
         <div className="min-h-screen bg-[#FDF8EE] pt-28 pb-20">
@@ -69,14 +163,14 @@ const Profile: React.FC = () => {
                                     <div className="flex items-center justify-between px-2">
                                         <div className="flex items-center gap-1.5 bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">
                                             <Zap size={10} fill="currentColor" />
-                                            <span className="text-[10px] font-black uppercase">Level 12</span>
+                                            <span className="text-[10px] font-black uppercase">Coming soon</span>
                                         </div>
-                                        <span className="text-[11px] font-bold text-gray-400">{user.exp || 0}/{user.maxExp || 1000} EXP</span>
+                                        <span className="text-[11px] font-bold text-gray-400">--/-- EXP</span>
                                     </div>
                                     <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
                                         <div
                                             className="h-full bg-linear-to-r from-emerald-500 to-teal-400 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.3)] transition-all duration-1000"
-                                            style={{ width: `${((user.exp || 0) / (user.maxExp || 1000)) * 100}%` }}
+                                            style={{ width: '0%' }}
                                         ></div>
                                     </div>
                                 </div>
@@ -88,7 +182,14 @@ const Profile: React.FC = () => {
                             <div>
                                 <h3 className="text-xs font-bold text-gray-700 uppercase mb-6 flex items-center justify-between">
                                     Thông tin
-                                    <Edit2 size={14} className="text-gray-300 cursor-pointer hover:text-amber-500" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditOpen(true)}
+                                        className="text-gray-300 cursor-pointer hover:text-amber-500 transition-colors"
+                                        aria-label="Chỉnh sửa thông tin"
+                                    >
+                                        <Edit2 size={14} />
+                                    </button>
                                 </h3>
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-4 group cursor-pointer">
@@ -134,7 +235,7 @@ const Profile: React.FC = () => {
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-bold text-gray-400 uppercase">Ngày tham gia</p>
-                                            <p className="text-sm font-bold text-gray-700">{user.joinDate || '01/01/2024'}</p>
+                                            <p className="text-sm font-bold text-gray-700">{joinDateLabel || '--'}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -163,7 +264,7 @@ const Profile: React.FC = () => {
                                             </div>
                                         </div>
                                     ))}
-                                    {!user.skills?.length && <p className="text-sm text-gray-400 text-center italic">Chưa có thông tin kỹ năng</p>}
+                                    {!user.skills?.length && <p className="text-sm text-gray-400 text-center italic">Coming soon</p>}
                                 </div>
                             </div>
                         </div>
@@ -184,7 +285,7 @@ const Profile: React.FC = () => {
                                             <p className="text-xs font-bold text-amber-600">{exp.company}</p>
                                         </div>
                                     ))}
-                                    {!user.experienceList?.length && <p className="text-sm text-gray-400 text-center italic">Chưa có thông tin kinh nghiệm</p>}
+                                    {!user.experienceList?.length && <p className="text-sm text-gray-400 text-center italic">Coming soon</p>}
                                 </div>
                             </div>
 
@@ -204,7 +305,7 @@ const Profile: React.FC = () => {
                                             <p className="text-xs font-bold text-emerald-600">{edu.school}</p>
                                         </div>
                                     ))}
-                                    {!user.educationList?.length && <p className="text-sm text-gray-400 text-center italic">Chưa có thông tin học vấn</p>}
+                                    {!user.educationList?.length && <p className="text-sm text-gray-400 text-center italic">Coming soon</p>}
                                 </div>
                             </div>
                         </div>
@@ -250,18 +351,25 @@ const Profile: React.FC = () => {
 
                         {activeTab === 'learning' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {enrolledCourses.map(course => (
+                                {loadingEnrollments ? (
+                                    <div className="col-span-full py-20 bg-white rounded-[40px] border border-gray-100 text-center">
+                                        <p className="text-sm font-bold text-gray-500">Đang tải...</p>
+                                    </div>
+                                ) : enrolledCourses.map(({ enrollment, course }) => (
                                     <div
-                                        key={course.id}
+                                        key={String(course.id)}
                                         className="bg-white rounded-[32px] overflow-hidden border border-gray-100 group hover:shadow-xl hover:shadow-gray-200/50 transition-all duration-500 cursor-pointer"
                                         onClick={() => navigate(`/course/${course.id}`)}
                                     >
                                         <div className="aspect-video relative overflow-hidden">
-                                            <img src={course.image} alt={course.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                            <img src={(course.imageUrl as any) || '/elearning-1.jpg'} alt={course.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                                             <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                             <div className="absolute bottom-4 left-4 right-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500">
                                                 <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-amber-500 w-[65%] shadow-[0_0_10px_#f59e0b]"></div>
+                                                    <div
+                                                        className="h-full bg-amber-500 shadow-[0_0_10px_#f59e0b]"
+                                                        style={{ width: `${Math.min(100, Math.max(0, Number(enrollment.progressPercent ?? 0)))}%` }}
+                                                    ></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -270,14 +378,16 @@ const Profile: React.FC = () => {
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-1.5">
                                                     <Star size={14} fill="currentColor" className="text-amber-500" />
-                                                    <span className="text-xs font-bold text-gray-400">5.0</span>
+                                                    <span className="text-xs font-bold text-gray-400">--</span>
                                                 </div>
-                                                <div className="text-[11px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">65% ĐÃ HỌC</div>
+                                                <div className="text-[11px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                                                    {Math.min(100, Math.max(0, Number(enrollment.progressPercent ?? 0)))}% ĐÃ HỌC
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
-                                {enrolledCourses.length === 0 && (
+                                {!loadingEnrollments && enrolledCourses.length === 0 && (
                                     <div className="col-span-full py-20 bg-white rounded-[40px] border border-dashed border-gray-200 text-center">
                                         <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                                             <BookOpen size={32} className="text-gray-300" />
@@ -299,11 +409,8 @@ const Profile: React.FC = () => {
                                 <div className="w-24 h-24 bg-amber-50 rounded-[32px] flex items-center justify-center mx-auto mb-8">
                                     <Award size={48} className="text-amber-500" />
                                 </div>
-                                <h3 className="text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Chưa có cuộc thi nào</h3>
-                                <p className="text-gray-400 font-bold max-w-sm mx-auto mb-8">Hành trình của bạn sẽ thú vị hơn khi tham gia các thử thách cùng cộng đồng.</p>
-                                <button className="bg-gray-900 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-gray-200 hover:bg-amber-600 transition-all cursor-pointer">
-                                    XEM CÁC CUỘC THI HOT
-                                </button>
+                                <h3 className="text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Coming soon</h3>
+                                <p className="text-gray-400 font-bold max-w-sm mx-auto mb-8">Tính năng này sẽ được cập nhật sau.</p>
                             </div>
                         )}
 
@@ -318,20 +425,20 @@ const Profile: React.FC = () => {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-50 text-center group hover:bg-blue-50 transition-all">
-                                    <p className="text-3xl font-black text-blue-600 mb-1 group-hover:scale-110 transition-transform">560</p>
+                                    <p className="text-3xl font-black text-blue-600 mb-1 group-hover:scale-110 transition-transform">--</p>
                                     <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Tổng điểm</p>
                                 </div>
                                 <div className="bg-emerald-50/50 p-6 rounded-[32px] border border-emerald-50 text-center group hover:bg-emerald-50 transition-all">
-                                    <p className="text-3xl font-black text-emerald-600 mb-1 group-hover:scale-110 transition-transform">400</p>
-                                    <div className="inline-flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">4 Bài dễ</div>
+                                    <p className="text-3xl font-black text-emerald-600 mb-1 group-hover:scale-110 transition-transform">--</p>
+                                    <div className="inline-flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Coming soon</div>
                                 </div>
                                 <div className="bg-amber-50/50 p-6 rounded-[32px] border border-amber-50 text-center group hover:bg-amber-50 transition-all">
-                                    <p className="text-3xl font-black text-amber-600 mb-1 group-hover:scale-110 transition-transform">160</p>
-                                    <div className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">1 Bài vừa</div>
+                                    <p className="text-3xl font-black text-amber-600 mb-1 group-hover:scale-110 transition-transform">--</p>
+                                    <div className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Coming soon</div>
                                 </div>
                                 <div className="bg-rose-50/50 p-6 rounded-[32px] border border-rose-50 text-center group hover:bg-rose-50 transition-all">
-                                    <p className="text-3xl font-black text-rose-600 mb-1 group-hover:scale-110 transition-transform">0</p>
-                                    <div className="inline-flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">0 Bài khó</div>
+                                    <p className="text-3xl font-black text-rose-600 mb-1 group-hover:scale-110 transition-transform">--</p>
+                                    <div className="inline-flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Coming soon</div>
                                 </div>
                             </div>
 
@@ -347,26 +454,11 @@ const Profile: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
-                                        {[
-                                            { name: 'checkNumber', diff: 'Dễ', lang: 'C++', score: '100/100', color: 'emerald' },
-                                            { name: 'createPhoneNumber', diff: 'Dễ', lang: 'C++', score: '100/100', color: 'emerald' },
-                                            { name: 'maxComNumbers', diff: 'Trung bình', lang: 'Java', score: '160/160', color: 'amber' },
-                                            { name: 'moneyBill', diff: 'Dễ', lang: 'Java', score: '100/100', color: 'emerald' },
-                                            { name: 'sumOfThree', diff: 'Dễ', lang: 'C++', score: '100/100', color: 'emerald' },
-                                        ].map((item, idx) => (
-                                            <tr key={idx} className="group hover:bg-gray-50/50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <span className="text-sm font-bold text-gray-700 group-hover:text-amber-600 transition-colors">{item.name}</span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight ${item.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                                                        {item.diff}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-sm font-bold text-gray-400">{item.lang}</td>
-                                                <td className="px-6 py-4 text-sm font-black text-gray-700 text-right">{item.score}</td>
-                                            </tr>
-                                        ))}
+                                        <tr>
+                                            <td colSpan={4} className="px-6 py-10 text-center">
+                                                <span className="text-sm font-bold text-gray-400 italic">Coming soon</span>
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -374,6 +466,162 @@ const Profile: React.FC = () => {
                     </main>
                 </div>
             </div>
+
+            {isEditOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                    <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase">Chỉnh sửa thông tin</h3>
+                            <button
+                                type="button"
+                                onClick={() => setIsEditOpen(false)}
+                                className="p-2 rounded-xl text-gray-400 cursor-pointer hover:text-gray-700 hover:bg-gray-50 transition-all"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+
+                            <div className="flex flex-col items-center justify-center py-6 bg-gray-50/50 rounded-[28px] border border-dashed border-gray-100">
+                                <div className="relative group">
+                                    <div className="w-28 h-28 rounded-full border-4 border-white shadow-lg overflow-hidden bg-gray-100">
+                                        <img
+                                            src={previewUrl || editAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky'}
+                                            className="w-full h-full object-cover"
+                                            alt="Avatar Preview"
+                                        />
+                                        {uploadingAvatar && (
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center border-2 border-white text-white shadow-md">
+                                        <Edit2 size={12} />
+                                    </div>
+                                </div>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Xem trước ảnh đại diện</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all ${uploadingAvatar ? 'bg-amber-100 text-amber-700' : 'bg-gray-900 text-white hover:bg-amber-600'}`}>
+                                    {uploadingAvatar ? 'Đang upload...' : 'Chọn ảnh từ máy'}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={async (e) => {
+                                            const f = e.target.files?.[0];
+                                            e.target.value = '';
+                                            if (!f) return;
+
+                                            if (!String(f.type || '').startsWith('image/')) {
+                                                setEditError('Chỉ hỗ trợ file ảnh');
+                                                return;
+                                            }
+
+                                            try {
+                                                setEditError('');
+                                                setUploadingAvatar(true);
+
+                                                // Create preview URL
+                                                const localUrl = URL.createObjectURL(f);
+                                                if (previewUrl) URL.revokeObjectURL(previewUrl);
+                                                setPreviewUrl(localUrl);
+
+                                                const compressed = await compressImage(f, { maxSize: 512, quality: 0.8 });
+                                                const res = await authService.uploadAvatar(compressed);
+                                                if (res.uploadedUrl) {
+                                                    setEditAvatar(res.uploadedUrl);
+                                                }
+                                            } catch (err: any) {
+                                                setEditError(err?.message || 'Upload ảnh thất bại');
+                                            } finally {
+                                                setUploadingAvatar(false);
+                                            }
+                                        }}
+                                    />
+                                </label>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditAvatar('');
+                                        if (previewUrl) {
+                                            URL.revokeObjectURL(previewUrl);
+                                            setPreviewUrl(null);
+                                        }
+                                    }}
+                                    aria-label="Xóa avatar"
+                                    className="cursor-pointer w-full px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-gray-50 text-gray-600 hover:bg-gray-100 transition-all"
+                                >
+                                    Xóa avatar
+                                </button>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-400 ml-1">Họ và tên</label>
+                                <input
+                                    className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-gray-900"
+                                    value={editFullName}
+                                    onChange={(e) => setEditFullName(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-400 ml-1">Số điện thoại</label>
+                                <input
+                                    className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-gray-900"
+                                    value={editPhone}
+                                    onChange={(e) => setEditPhone(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="pt-2 flex items-center justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditOpen(false)}
+                                    className="px-6 py-3 cursor-pointer rounded-2xl font-black text-xs uppercase tracking-widest text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-all"
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={savingProfile}
+                                    onClick={async () => {
+                                        if (!user) return;
+                                        try {
+                                            setSavingProfile(true);
+                                            const ok = await updateUser({
+                                                fullName: editFullName,
+                                                phone: editPhone,
+                                                avatar: editAvatar,
+                                            });
+                                            if (!ok) {
+                                                setEditError('Không thể lưu. Vui lòng thử lại.');
+                                                return;
+                                            }
+                                            setIsEditOpen(false);
+                                        } finally {
+                                            setSavingProfile(false);
+                                        }
+                                    }}
+                                    className="px-6 py-3 rounded-2xl cursor-pointer font-black text-xs uppercase tracking-widest bg-gray-900 text-white hover:bg-amber-600 transition-all disabled:opacity-60"
+                                >
+                                    {savingProfile ? 'Đang lưu...' : 'Lưu'}
+                                </button>
+                            </div>
+
+                            {editError && (
+                                <div className="text-sm font-bold text-red-500">
+                                    {editError}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

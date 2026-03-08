@@ -2,11 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Filter, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
 import CourseCard from '../components/home/CourseCard';
-import { type Course } from '../config/mock-data';
 import { useCourseStore } from '../store/useCourseStore';
-
-import { categoryService, type BECategory } from '../api/categoryService';
-import toast from 'react-hot-toast';
+import { categoryService } from '../services/category.service';
+import { type FrontendCourse } from '../services/course.service';
 
 const PAGE_SIZE = 6;
 
@@ -18,35 +16,45 @@ const SORT_OPTIONS = [
 const Courses: React.FC = () => {
     const [searchParams] = useSearchParams();
     const [searchQuery, setSearchQuery] = useState('');
-    const [categories, setCategories] = useState<BECategory[]>([]);
     const [selectedCategory, setSelectedCategory] = useState('Tất cả');
     const [sortBy, setSortBy] = useState('latest');
-    const { courses } = useCourseStore();
+    const { courses, loadCourses } = useCourseStore();
+    const [categories, setCategories] = useState<string[]>(['Tất cả']);
     const [currentPage, setCurrentPage] = useState(1);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [isCatLoading, setIsCatLoading] = useState(true);
 
-    // Fetch Categories
     useEffect(() => {
-        const fetchCategories = async () => {
-            try {
-                const response = await categoryService.getCategories();
-                if (response.success && response.data) {
-                    setCategories(response.data.categories);
-                }
-            } catch (error) {
-                toast.error('Không thể tải danh mục');
-            } finally {
-                setIsCatLoading(false);
-            }
-        };
-        fetchCategories();
+        loadCourses();
     }, []);
 
-    // Sync state with URL params if any
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const res = await categoryService.listCategories();
+                const names = res
+                    .map(c => c.name)
+                    .filter(Boolean);
+                const unique = Array.from(new Set(names));
+                if (mounted) {
+                    setCategories(['Tất cả', ...unique]);
+                }
+            } catch {
+                if (mounted) {
+                    setCategories(['Tất cả']);
+                }
+            }
+        })();
+
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    // Sync state with URL params if any (after categories loaded)
     useEffect(() => {
         const cat = searchParams.get('category');
-        if (cat) {
+        if (cat && categories.includes(cat)) {
             setSelectedCategory(cat);
         }
     }, [searchParams, categories]);
@@ -144,35 +152,18 @@ const Courses: React.FC = () => {
                             <div className="space-y-3">
                                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-1">Chủ đề</p>
                                 <div className="space-y-1">
-                                    <button
-                                        onClick={() => setSelectedCategory('Tất cả')}
-                                        className={`cursor-pointer w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory === 'Tất cả'
-                                            ? 'bg-amber-50 text-amber-600'
-                                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        Tất cả
-                                    </button>
-                                    {isCatLoading ? (
-                                        <div className="space-y-2 p-4">
-                                            {[1, 2, 3].map(i => (
-                                                <div key={i} className="h-8 bg-gray-50 animate-pulse rounded-lg"></div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        categories.map(cat => (
-                                            <button
-                                                key={cat.id}
-                                                onClick={() => setSelectedCategory(cat.name)}
-                                                className={`cursor-pointer w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory === cat.name
-                                                    ? 'bg-amber-50 text-amber-600'
-                                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                                    }`}
-                                            >
-                                                {cat.name}
-                                            </button>
-                                        ))
-                                    )}
+                                    {categories.map((cat: string) => (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setSelectedCategory(cat)}
+                                            className={`cursor-pointer w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory === cat
+                                                ? 'bg-amber-50 text-amber-600'
+                                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
@@ -229,7 +220,7 @@ const Courses: React.FC = () => {
                         {/* Course Grid */}
                         {paginatedCourses.length > 0 ? (
                             <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                                {paginatedCourses.map((course: Course) => (
+                                {paginatedCourses.map((course: FrontendCourse) => (
                                     <div key={course.id}>
                                         <CourseCard course={course} />
                                     </div>

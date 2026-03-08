@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     BookOpen, Clock, ChevronRight,
@@ -6,11 +6,19 @@ import {
     Search
 } from 'lucide-react';
 import { useEnrollmentStore } from '../store/useEnrollmentStore';
-import { type Course } from '../config/mock-data';
+import { type FrontendCourse } from '../services/course.service';
+import { useCourseStore } from '../store/useCourseStore';
+import { getFirstLessonId, getLessonIdByProgressPercent } from '../store/curriculumIndex';
 
 const MyLearning: React.FC = () => {
     const navigate = useNavigate();
-    const { enrolledCourses } = useEnrollmentStore();
+    const { enrolledCourses, syncEnrollments, isLoading, courseProgress } = useEnrollmentStore();
+    const { loadCourseDetail, getCurriculumIndex } = useCourseStore();
+
+    useEffect(() => {
+        syncEnrollments();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [syncEnrollments]);
 
     return (
         <div className="min-h-screen bg-gray-50/50 pt-24 pb-20">
@@ -73,9 +81,16 @@ const MyLearning: React.FC = () => {
                     </div>
                 </div>
 
-                {enrolledCourses.length > 0 ? (
+                {isLoading && enrolledCourses.length === 0 ? (
+                    <div className="text-center py-32">
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs animate-pulse">Đang đồng bộ hóa khóa học...</p>
+                        </div>
+                    </div>
+                ) : enrolledCourses.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {enrolledCourses.map((course: Course) => (
+                        {enrolledCourses.map((course: FrontendCourse) => (
                             <div
                                 key={course.id}
                                 className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
@@ -112,17 +127,50 @@ const MyLearning: React.FC = () => {
 
                                     {/* Progress Bar */}
                                     <div className="space-y-2 mb-6">
-                                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
-                                            <span className="text-gray-400">Tiến độ</span>
-                                            <span className="text-amber-600">0%</span>
-                                        </div>
-                                        <div className="h-2 bg-gray-50 rounded-full overflow-hidden border border-gray-100">
-                                            <div className="h-full bg-amber-500 w-[0%] rounded-full"></div>
-                                        </div>
+                                        {(() => {
+                                            const progress = Math.min(100, Math.max(0, Number(courseProgress[String(course.id)] ?? 0)));
+                                            return (
+                                                <>
+                                                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                                                        <span className="text-gray-400">Tiến độ</span>
+                                                        <span className="text-amber-600">{progress}%</span>
+                                                    </div>
+
+                                                    <div className="h-2 bg-gray-50 rounded-full overflow-hidden border border-gray-100">
+                                                        <div className="h-full bg-amber-500 rounded-full" style={{ width: `${progress}%` }}></div>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
 
                                     <button
-                                        onClick={() => navigate(`/course/${course.id}`)}
+                                        onClick={async () => {
+                                            try {
+                                                const progress = Math.min(100, Math.max(0, Number(courseProgress[String(course.id)] ?? 0)));
+                                                const idx = getCurriculumIndex(String(course.id));
+                                                if (idx) {
+                                                    const lessonId = getLessonIdByProgressPercent(idx, progress) || getFirstLessonId(idx);
+                                                    if (lessonId) {
+                                                        navigate(`/course/${course.id}/lesson/${lessonId}`);
+                                                        return;
+                                                    }
+                                                }
+
+                                                const detail = await loadCourseDetail(String(course.id));
+                                                const idx2 = detail ? getCurriculumIndex(String(course.id)) : undefined;
+                                                if (idx2) {
+                                                    const lessonId = getLessonIdByProgressPercent(idx2, progress) || getFirstLessonId(idx2);
+                                                    if (lessonId) {
+                                                        navigate(`/course/${course.id}/lesson/${lessonId}`);
+                                                        return;
+                                                    }
+                                                }
+                                            } catch {
+                                            }
+
+                                            navigate(`/course/${course.id}`);
+                                        }}
                                         className="w-full py-4 bg-gray-50 text-gray-900 rounded-2xl font-black text-xs hover:bg-amber-500 hover:text-white transition-all flex items-center justify-center gap-2 group/btn cursor-pointer"
                                     >
                                         HỌC TIẾP

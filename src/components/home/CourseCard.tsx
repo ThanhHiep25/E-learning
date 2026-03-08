@@ -1,17 +1,27 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Star, Users, BookOpen, Heart, ArrowRight, PlayCircle } from 'lucide-react';
-import { type Course } from '../../config/mock-data';
+import { type FrontendCourse } from '../../services/course.service';
 import { useEnrollmentStore } from '../../store/useEnrollmentStore';
 
 interface CourseCardProps {
-    course: Course;
+    course: FrontendCourse;
 }
 
 const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
     const navigate = useNavigate();
     const { enrolledCourses } = useEnrollmentStore();
     const isEnrolled = enrolledCourses.some(item => item.id === course.id);
+
+    const teacherInitials = (name: string) => {
+        const parts = String(name || '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+        const first = parts[0]?.[0] || '';
+        const last = parts.length > 1 ? parts[parts.length - 1]?.[0] : '';
+        return `${first}${last}`.toUpperCase() || 'GV';
+    };
 
     const handleAction = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -30,7 +40,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
             {/* Image & Badges */}
             <div className="relative aspect-16/10 overflow-hidden">
                 <img
-                    src={course.image}
+                    src={course.image || '/elearning-1.jpg'}
                     alt={course.title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
@@ -90,7 +100,13 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
                 {/* Teacher & Price */}
                 <div className="mt-auto pt-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <img src={course.teacherAvatar} alt={course.teacher} className="w-8 h-8 rounded-full border border-amber-100" />
+                        {course.teacherAvatar ? (
+                            <img src={course.teacherAvatar} alt={course.teacher} className="w-8 h-8 rounded-full border border-amber-100" />
+                        ) : (
+                            <div className="w-8 h-8 rounded-full border border-amber-100 bg-amber-50 text-amber-700 flex items-center justify-center text-[10px] font-black">
+                                {teacherInitials(course.teacher)}
+                            </div>
+                        )}
                         <span className="text-xs font-semibold text-gray-600">{course.teacher}</span>
                     </div>
                     {/* <div className="text-right">

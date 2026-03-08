@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { X, ChevronDown, Facebook, Youtube, Globe, Layout } from 'lucide-react';
+import { X, ChevronDown, Facebook, Youtube, Globe, Sparkles, Layout } from 'lucide-react';
 import { navigationConfig } from '../../config/navigation';
 import { useAuth } from '../../context/AuthContext';
 
@@ -22,15 +22,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
                 <div className="relative z-10 flex items-center justify-between">
                     <div className='flex items-center gap-4 group'>
-
-                        <img src='/idea-bulb.png' alt="Logo" className="w-10 h-10 object-contain" />
-
+                        <div className="w-12 h-12 bg-linear-to-br from-amber-400 to-orange-600 rounded-[18px] flex items-center justify-center shadow-xl shadow-amber-500/20 group-hover:rotate-15 transition-all duration-500">
+                            <img src='/idea-bulb.png' alt="Logo" className="w-8 h-8 object-contain brightness-0 invert" />
+                        </div>
                         <div>
                             <p className='text-xl font-black leading-none tracking-tighter'>
                                 E<span className='text-amber-500'>LEARN</span>
                             </p>
                             <div className="flex items-center gap-1.5 mt-1.5">
-                                <p className='text-[10px] font-black text-gray-400 leading-none'>Mobile Hub</p>
+                                <Sparkles size={10} className="text-amber-400 animate-pulse" />
+                                <p className='text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] leading-none'>Mobile Hub</p>
                             </div>
                         </div>
                     </div>
@@ -45,7 +46,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
             {/* Premium Navigation Area */}
             <nav className="flex-1 overflow-y-auto px-6 py-10 custom-scrollbar bg-white">
-
+                <div className="mb-6 px-4">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mb-4">Main Menu</p>
+                </div>
                 <ul className="space-y-3">
                     {navigationConfig.map((item, index) => (
                         <li key={index}>
@@ -65,7 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                                                 }`}>
                                                 <item.icon size={22} strokeWidth={2.5} />
                                             </div>
-                                            <span className="">{item.label}</span>
+                                            <span className="text-sm font-black uppercase tracking-widest">{item.label}</span>
                                         </div>
                                         <ChevronDown size={18} className={`transition-transform duration-500 ${openSubmenu === item.label ? 'rotate-180 text-amber-500' : 'text-gray-300'}`} />
                                     </button>
@@ -78,7 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                                                     to={sub.path}
                                                     onClick={onClose}
                                                     className={({ isActive }) =>
-                                                        `relative block px-5 py-3.5 rounded-2xl text-[13px] transition-all duration-300 font-bold ${isActive
+                                                        `relative block px-5 py-3.5 rounded-2xl text-[13px] transition-all duration-300 font-black uppercase tracking-wider ${isActive
                                                             ? 'text-amber-600 bg-amber-50/50 shadow-xs'
                                                             : 'text-gray-400 hover:text-amber-600 hover:translate-x-2'
                                                         }`
@@ -116,7 +119,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                                                 }`}>
                                                 <item.icon size={22} strokeWidth={2.5} />
                                             </div>
-                                            <span className="text-[14px] font-bold">{item.label}</span>
+                                            <span className="text-sm font-black uppercase tracking-widest">{item.label}</span>
                                             {isActive && (
                                                 <div className="ml-auto w-1.5 h-6 bg-amber-500 rounded-full shadow-[0_0_10px_rgba(245,158,11,0.3)]"></div>
                                             )}
@@ -130,9 +133,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     {/* Management Link for Teacher/Admin */}
                     {(user?.role === 'TEACHER' || user?.role === 'ADMIN') && (
                         <li className="mt-8 pt-6 border-t border-gray-100/50">
-                            <p className="text-[12px] font-bold text-amber-500 mb-4 px-4">Admin Tools</p>
+                            <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.3em] mb-4 px-4">Admin Tools</p>
                             <NavLink
-                                to="/teacher/dashboard"
+                                to={user?.role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard'}
                                 onClick={onClose}
                                 className={({ isActive }) =>
                                     `flex items-center gap-4 px-5 py-4 rounded-[22px] transition-all duration-500 group ${isActive
@@ -144,14 +147,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                                 <div className="p-2 bg-white shadow-sm rounded-xl text-amber-600">
                                     <Layout size={20} strokeWidth={2.5} />
                                 </div>
-                                <span className="text-sm font-bold uppercase ">Trang Quản Lý</span>
+                                <span className="text-sm font-black uppercase tracking-widest">Trang Quản Lý</span>
                             </NavLink>
                         </li>
                     )}
                 </ul>
 
                 {/* Promo Card in Sidebar */}
-                {/* <div className="mt-12 p-6 bg-gray-900 rounded-[32px] text-white overflow-hidden relative group">
+                <div className="mt-12 p-6 bg-gray-900 rounded-[32px] text-white overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-8 bg-amber-500/10 rounded-full blur-2xl"></div>
                     <div className="relative z-10">
                         <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-2">Special Offer</p>
@@ -160,7 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                             Nâng cấp ngay
                         </button>
                     </div>
-                </div> */}
+                </div>
             </nav>
 
             {/* Refined Footer */}

@@ -6,24 +6,71 @@ import {
     Menu, X, ArrowLeft, Trophy, ExternalLink
 } from 'lucide-react';
 import { useCourseStore } from '../store/useCourseStore';
+import { enrollmentService, type BackendEnrollment } from '../services/enrollment.service';
+import { useAuth } from '../context/AuthContext';
 
 const LessonPlayer: React.FC = () => {
     const { id, lessonId } = useParams<{ id: string, lessonId: string }>();
     const navigate = useNavigate();
-    const { courses } = useCourseStore();
+    const { user } = useAuth();
+    const { courses, loadCourseDetail, getCurriculumIndex } = useCourseStore();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [enrollment, setEnrollment] = useState<BackendEnrollment | null>(null);
     const course = useMemo(() => courses.find(c => c.id === id), [courses, id]);
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
+    useEffect(() => {
+        if (!id) return;
+        if (!course) {
+            loadCourseDetail(id);
+        }
+    }, [id, course, loadCourseDetail]);
+
+    useEffect(() => {
+        const loadEnrollment = async () => {
+            if (!id) return;
+            try {
+                enrollmentService.clearCache();
+                const enrollments = await enrollmentService.listMyEnrollments();
+                const en = enrollments.find((e) => String(e.courseId) === String(id)) || null;
+                setEnrollment(en);
+            } catch (e) {
+                setEnrollment(null);
+            }
+        };
+
+        loadEnrollment();
+    }, [id, user?.id]);
+
+    useEffect(() => {
+        setEnrollment(null);
+    }, [user?.id]);
+
+    const curriculumIndex = useMemo(() => {
+        if (!id) return undefined;
+        return getCurriculumIndex(String(id));
+    }, [getCurriculumIndex, id, course?.curriculum]);
+
     // Flatten lessons to find current and next/prev
     const allLessons = useMemo(() => {
-        return course?.curriculum.flatMap(module =>
-            module.lessons.map(lesson => ({ ...lesson, moduleId: module.id, moduleTitle: module.title }))
-        ) || [];
-    }, [course]);
+        if (!curriculumIndex) return [];
+        return curriculumIndex.lessonIds.map((lessonId) => {
+            const lesson = curriculumIndex.lessonsById[lessonId];
+            const module = curriculumIndex.modulesById[lesson.moduleId];
+            return {
+                id: lesson.id,
+                title: lesson.title,
+                duration: lesson.duration,
+                isPreview: lesson.isPreview,
+                videoUrl: lesson.videoUrl,
+                moduleId: lesson.moduleId,
+                moduleTitle: module?.title || "",
+            };
+        });
+    }, [curriculumIndex]);
 
     const currentLesson = useMemo(() => {
         if (!lessonId) return allLessons[0];
@@ -34,7 +81,152 @@ const LessonPlayer: React.FC = () => {
     const nextLesson = allLessons[currentIdx + 1];
     const prevLesson = allLessons[currentIdx - 1];
 
-    if (!course) return null;
+    const computedProgressPercent = useMemo(() => {
+        if (!allLessons.length || currentIdx < 0) return 0;
+        return Math.min(100, Math.max(0, Math.round(((currentIdx + 1) / allLessons.length) * 100)));
+    }, [allLessons.length, currentIdx]);
+
+    const displayedProgressPercent = enrollment
+        ? Number(enrollment?.progressPercent ?? 0)
+        : computedProgressPercent;
+
+    const canAccessCurrentLesson = Boolean(enrollment) || Boolean(currentLesson?.isPreview);
+
+    const getYouTubeEmbedUrl = (url: string): string | null => {
+        const u = String(url || '').trim();
+        if (!u) return null;
+        try {
+            const parsed = new URL(u);
+            const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+            if (host === 'youtu.be') {
+                const id = parsed.pathname.split('/').filter(Boolean)[0];
+                return id ? `https://www.youtube.com/embed/${id}` : null;
+            }
+            if (host === 'youtube.com' || host === 'm.youtube.com') {
+                const id = parsed.searchParams.get('v');
+                if (id) return `https://www.youtube.com/embed/${id}`;
+                const parts = parsed.pathname.split('/').filter(Boolean);
+                const idx = parts.findIndex((p) => p === 'embed');
+                if (idx >= 0 && parts[idx + 1]) return `https://www.youtube.com/embed/${parts[idx + 1]}`;
+            }
+        } catch {
+        }
+        return null;
+    };
+
+    const renderLessonMedia = () => {
+        if (!canAccessCurrentLesson) {
+            return (
+                <div className="absolute inset-0 flex items-center justify-center p-6">
+                    <div className="text-center">
+                        <p className="text-white/80 text-sm font-bold">Nội dung bị khóa</p>
+                    </div>
+                </div>
+            );
+        }
+
+        const url = String(currentLesson?.videoUrl || '').trim();
+        const type = String((currentLesson as any)?.type || 'video');
+        if (!url) {
+            return (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                        <p className="text-white/70 text-sm font-bold">Bài học chưa có nội dung</p>
+                    </div>
+                </div>
+            );
+        }
+
+        if (type === 'video') {
+            const yt = getYouTubeEmbedUrl(url);
+            if (yt) {
+                return (
+                    <iframe
+                        src={yt}
+                        className="absolute inset-0 w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                    />
+                );
+            }
+
+            return (
+                <video
+                    src={url}
+                    controls
+                    className="absolute inset-0 w-full h-full"
+                />
+            );
+        }
+
+        if (type === 'audio') {
+            return (
+                <div className="absolute inset-0 flex items-center justify-center p-6">
+                    <audio src={url} controls className="w-full max-w-2xl" />
+                </div>
+            );
+        }
+
+        if (type === 'pdf') {
+            return (
+                <iframe
+                    src={url}
+                    className="absolute inset-0 w-full h-full bg-white"
+                />
+            );
+        }
+
+        return (
+            <div className="absolute inset-0 flex items-center justify-center p-6">
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-white/10 border border-white/20 text-white px-6 py-3 rounded-2xl font-black hover:bg-amber-600 transition-all"
+                >
+                    MỞ TÀI LIỆU
+                </a>
+            </div>
+        );
+    };
+
+    if (!id) {
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center bg-gray-50 p-10 text-center">
+                <p className="font-bold text-gray-600">Không tìm thấy khóa học</p>
+                <button
+                    onClick={() => navigate('/courses')}
+                    className="mt-4 px-6 py-3 rounded-2xl bg-gray-900 text-white font-black hover:bg-amber-600 transition-all"
+                >
+                    VỀ DANH SÁCH KHÓA HỌC
+                </button>
+            </div>
+        );
+    }
+
+    if (!course) {
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center bg-gray-50">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
+                <p className="mt-4 text-sm font-bold text-gray-500">Đang tải bài học...</p>
+            </div>
+        );
+    }
+
+    const hasLessons = (curriculumIndex?.lessonIds?.length ?? 0) > 0 || (course.curriculum?.some((m) => m.lessons?.length > 0) ?? false);
+    if (!hasLessons) {
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center bg-gray-50 p-10 text-center">
+                <p className="font-bold text-gray-600">Khóa học chưa có bài học nào</p>
+                <button
+                    onClick={() => navigate(`/course/${id}`)}
+                    className="mt-4 px-6 py-3 rounded-2xl bg-gray-900 text-white font-black hover:bg-amber-600 transition-all"
+                >
+                    VỀ TRANG KHÓA HỌC
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden">
@@ -56,9 +248,9 @@ const LessonPlayer: React.FC = () => {
                 <div className="flex items-center gap-6">
                     <div className="hidden lg:flex items-center gap-2">
                         <div className="h-2 w-32 bg-white/10 rounded-full overflow-hidden">
-                            <div className="h-full bg-amber-500 w-[15%]"></div>
+                            <div className="h-full bg-amber-500" style={{ width: `${displayedProgressPercent}%` }}></div>
                         </div>
-                        <span className="text-xs font-bold text-amber-500">15% Hoàn thành</span>
+                        <span className="text-xs font-bold text-amber-500">{displayedProgressPercent}% Hoàn thành</span>
                     </div>
 
                     <button className="flex items-center gap-2 bg-amber-500 text-gray-900 px-4 py-1.5 rounded-full text-xs font-black hover:bg-amber-600 transition-all cursor-pointer">
@@ -78,16 +270,29 @@ const LessonPlayer: React.FC = () => {
             <div className="flex flex-1 min-h-0 relative">
                 {/* Main Content (Video & Info) */}
                 <main className={`flex-1 overflow-y-auto bg-gray-50 flex flex-col transition-all duration-300 ${sidebarOpen ? 'lg:mr-0' : ''}`}>
-                    {/* Video Player Placeholder */}
-                    <div className="w-full h-auto aspect-video md:h-[600px] bg-black relative group">
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/50 group-hover:scale-110 transition-transform">
-                                <Play size={40} className="text-amber-500 ml-1" />
+                    {/* Lesson Player (Real content from BE) */}
+                    <div className="w-full h-auto aspect-video md:h-[600px] bg-black relative overflow-hidden">
+                        {renderLessonMedia()}
+
+                        {!canAccessCurrentLesson && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-6">
+                                <div className="bg-white rounded-2xl p-6 max-w-md w-full text-center">
+                                    <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <Lock size={22} />
+                                    </div>
+                                    <h3 className="text-lg font-black text-gray-900">Bạn cần đăng ký khóa học để xem bài này</h3>
+                                    <p className="text-sm text-gray-500 font-medium mt-2">
+                                        Bài học này không phải preview.
+                                    </p>
+                                    <button
+                                        onClick={() => navigate(`/course/${id}`)}
+                                        className="mt-5 w-full bg-gray-900 text-white px-6 py-3 rounded-2xl font-black hover:bg-amber-600 transition-all active:scale-95 cursor-pointer"
+                                    >
+                                        VỀ TRANG KHÓA HỌC
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div className="absolute bottom-0 left-0 w-full h-1 bg-white/20">
-                            <div className="h-full bg-amber-500 w-[45%] shadow-[0_0_10px_#f59e0b]"></div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Lesson Details */}
@@ -128,7 +333,28 @@ const LessonPlayer: React.FC = () => {
                         <div className="flex items-center justify-between pt-8 border-t border-gray-200">
                             <button
                                 disabled={!prevLesson}
-                                onClick={() => navigate(`/course/${id}/lesson/${prevLesson.id}`)}
+                                onClick={async () => {
+                                    if (!id || !prevLesson) return;
+
+                                    const prevIdx = currentIdx - 1;
+                                    const prevProgress = Math.min(
+                                        100,
+                                        Math.max(
+                                            Number(enrollment?.progressPercent ?? 0),
+                                            Math.round(((prevIdx + 1) / (allLessons.length || 1)) * 100),
+                                        ),
+                                    );
+
+                                    if (enrollment) {
+                                        try {
+                                            const updated = await enrollmentService.updateProgress(String(id), prevProgress);
+                                            setEnrollment(updated);
+                                        } catch (e) {
+                                        }
+                                    }
+
+                                    navigate(`/course/${id}/lesson/${prevLesson.id}`);
+                                }}
                                 className="flex items-center gap-2 font-bold text-gray-500 hover:text-gray-900 disabled:opacity-20 disabled:hover:text-gray-50 transition-colors cursor-pointer"
                             >
                                 <ChevronLeft size={20} />
@@ -136,7 +362,25 @@ const LessonPlayer: React.FC = () => {
                             </button>
                             <button
                                 disabled={!nextLesson}
-                                onClick={() => navigate(`/course/${id}/lesson/${nextLesson.id}`)}
+                                onClick={async () => {
+                                    if (!id || !nextLesson) return;
+                                    const nextIdx = currentIdx + 1;
+                                    const nextProgress = Math.min(
+                                        100,
+                                        Math.max(
+                                            Number(enrollment?.progressPercent ?? 0),
+                                            Math.round(((nextIdx + 1) / (allLessons.length || 1)) * 100),
+                                        ),
+                                    );
+
+                                    try {
+                                        const updated = await enrollmentService.updateProgress(String(id), nextProgress);
+                                        setEnrollment(updated);
+                                    } catch (e) {
+                                    }
+
+                                    navigate(`/course/${id}/lesson/${nextLesson.id}`);
+                                }}
                                 className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3 rounded-2xl font-black hover:bg-amber-600 transition-all shadow-lg active:scale-95 disabled:opacity-20 cursor-pointer"
                             >
                                 BÀI TIẾP THEO
@@ -170,10 +414,19 @@ const LessonPlayer: React.FC = () => {
                                 <div className="space-y-1 pl-2">
                                     {module.lessons.map((lesson) => {
                                         const isActive = lesson.id === currentLesson?.id;
+                                        const canAccess = Boolean(enrollment) || Boolean(lesson.isPreview);
                                         return (
                                             <button
                                                 key={lesson.id}
-                                                onClick={() => navigate(`/course/${id}/lesson/${lesson.id}`)}
+                                                onClick={async () => {
+                                                    if (!id) return;
+                                                    if (!canAccess) {
+                                                        navigate(`/course/${id}`);
+                                                        return;
+                                                    }
+
+                                                    navigate(`/course/${id}/lesson/${lesson.id}`);
+                                                }}
                                                 className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all group cursor-pointer ${isActive ? 'bg-amber-50 text-amber-600' : 'hover:bg-gray-50'}`}
                                             >
                                                 <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isActive ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400 group-hover:bg-gray-200'}`}>

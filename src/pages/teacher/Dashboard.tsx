@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users, Plus, BookOpen, Clock,
@@ -6,69 +6,45 @@ import {
     BarChart3, Activity, GraduationCap
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { teacherService, type BECourse } from '../../api/teacherService';
-import toast from 'react-hot-toast';
+import { teacherService, type BackendTeacherCourse } from '../../services/teacher.service';
 
 const TeacherDashboard: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [courses, setCourses] = useState<BECourse[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+
+    const [courses, setCourses] = useState<BackendTeacherCourse[]>([]);
+    const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
 
     useEffect(() => {
-        const fetchCourses = async () => {
-            try {
-                const response = await teacherService.getCourses();
-                if (response.success && response.data) {
-                    setCourses(response.data.courses);
-                } else {
-                    toast.error(response.message || 'Không thể tải danh sách khóa học');
-                }
-            } catch (error) {
-                console.error(error);
-                toast.error('Lỗi kết nối máy chủ');
-            } finally {
-                setIsLoading(false);
-            }
+        const load = async () => {
+            const myCourses = await teacherService.listMyCourses();
+            setCourses(myCourses);
+
+            const pairs = await Promise.all(
+                (myCourses || []).map(async (c) => {
+                    const enrollments = await teacherService.getCourseEnrollments(String(c.id));
+                    return [String(c.id), enrollments.length] as const;
+                }),
+            );
+
+            setStudentCounts(Object.fromEntries(pairs));
         };
 
-        fetchCourses();
+        load();
     }, []);
 
-    const handleDeleteCourse = async (id: string) => {
-        if (window.confirm('Bạn có chắc chắn muốn xóa khóa học này?')) {
-            try {
-                const response = await teacherService.deleteCourse(id);
-                if (response.success) {
-                    toast.success('Đã xóa khóa học');
-                    setCourses(courses.filter(c => c.id !== id));
-                } else {
-                    toast.error(response.message || 'Không thể xóa khóa học');
-                }
-            } catch (error) {
-                toast.error('Lỗi khi xóa khóa học');
-            }
-        }
-    };
+    const teacherCourses = useMemo(() => courses, [courses]);
 
-    const stats = useMemo(() => [
-        { label: 'Tổng số khóa học', value: courses.length, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { label: 'Tổng số sinh viên', value: '1,250', icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-        { label: 'Đánh giá trung bình', value: '4.8', icon: Activity, color: 'text-amber-600', bg: 'bg-amber-50' },
+    const stats = [
+        { label: 'Tổng số khóa học', value: teacherCourses.length, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'Tổng số sinh viên', value: teacherCourses.reduce((acc, c) => acc + (studentCounts[String(c.id)] || 0), 0).toLocaleString(), icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: 'Đánh giá trung bình', value: (0).toFixed(1), icon: Activity, color: 'text-amber-600', bg: 'bg-amber-50' },
         { label: 'Giờ giảng dạy', value: '128+', icon: Clock, color: 'text-purple-600', bg: 'bg-purple-50' },
-    ], [courses]);
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
-            </div>
-        );
-    }
+    ];
 
     return (
         <div className="w-full">
-            <div className="max-w-7xl mx-auto">
+            <div className="max-w-7xl mx-auto md:mt-0 mt-10">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                     <div>
@@ -76,7 +52,7 @@ const TeacherDashboard: React.FC = () => {
                             <GraduationCap size={32} className="text-amber-500" />
                             Bảng điều khiển Giảng viên
                         </h1>
-                        <p className="text-gray-500 font-medium mt-1">Chào mừng quay trở lại, {(user as any)?.name || user?.fullName || 'Giảng viên'}!</p>
+                        <p className="text-gray-500 font-medium mt-1">Chào mừng quay trở lại, {user?.fullName}!</p>
                     </div>
                     <button
                         onClick={() => navigate('/teacher/create-course')}
@@ -98,7 +74,7 @@ const TeacherDashboard: React.FC = () => {
                                 <BarChart3 size={20} className="text-gray-200" />
                             </div>
                             <p className="text-gray-500 text-sm font-bold uppercase tracking-wider">{stat.label}</p>
-                            <h3 className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</h3>
+                            <h3 className="text-2xl font-black text-gray-900 mt-1">{stat.value}</h3>
                         </div>
                     ))}
                 </div>
@@ -122,7 +98,7 @@ const TeacherDashboard: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {courses.length > 0 ? courses.map((course) => (
+                                {teacherCourses.length > 0 ? teacherCourses.map((course) => (
                                     <tr key={course.id} className="hover:bg-gray-50/50 transition-colors group">
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-4">
@@ -131,58 +107,57 @@ const TeacherDashboard: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <h4 className="text-sm font-bold text-gray-900 group-hover:text-amber-600 transition-colors line-clamp-1">{course.title}</h4>
-                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{course.categoryId ? `ID: ${course.categoryId}` : 'Chưa phân loại'}</p>
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{String(course.categoryId ?? 'Khác')}</p>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-8 py-6">
-                                            <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-tighter ${course.published ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
-                                                {course.published ? 'Đang hoạt động' : 'Bản nháp'}
+                                            <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-tighter">
+                                                {course.published ? 'Đã xuất bản' : 'Bản nháp'}
                                             </span>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
                                                 <Users size={14} className="text-blue-500" />
-                                                {'0'}
+                                                {studentCounts[String(course.id)] || 0}
                                             </div>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-1.5 text-sm font-bold text-amber-500">
                                                 <Activity size={14} />
-                                                {'0'}
+                                                0
                                             </div>
                                         </td>
                                         <td className="px-8 py-6 text-right">
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
                                                     onClick={() => navigate(`/course/${course.id}`)}
-                                                    className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                                                    className="cursor-pointer p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
                                                     title="Xem trang web"
                                                 >
                                                     <ExternalLink size={18} />
                                                 </button>
                                                 <button
                                                     onClick={() => navigate(`/teacher/content-editor/${course.id}`)}
-                                                    className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                                                    className="cursor-pointer p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
                                                     title="Quản lý bài giảng"
                                                 >
                                                     <BookOpen size={18} />
                                                 </button>
                                                 <button
                                                     onClick={() => navigate(`/teacher/edit-course/${course.id}`)}
-                                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                                    className="cursor-pointer p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                                                     title="Chỉnh sửa"
                                                 >
                                                     <Edit3 size={18} />
                                                 </button>
                                                 <button
-                                                    onClick={() => handleDeleteCourse(course.id)}
-                                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                                    className="cursor-pointer p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                                                     title="Xóa"
                                                 >
                                                     <Trash2 size={18} />
                                                 </button>
-                                                <button className="p-2 text-gray-300 hover:text-gray-600 rounded-xl transition-all">
+                                                <button className="cursor-pointer p-2 text-gray-300 hover:text-gray-600 rounded-xl transition-all">
                                                     <MoreVertical size={18} />
                                                 </button>
                                             </div>
