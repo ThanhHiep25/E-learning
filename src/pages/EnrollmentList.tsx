@@ -8,10 +8,11 @@ import toast from 'react-hot-toast';
 
 const EnrollmentList: React.FC = () => {
     const navigate = useNavigate();
-    const { enrolledCourses, unenroll, clearEnrollments } = useEnrollmentStore();
+    const { enrolledCourses, unenrollCourse, clearEnrollments, syncEnrollments } = useEnrollmentStore();
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        syncEnrollments();
     }, []);
 
     if (enrolledCourses.length === 0) {
@@ -59,7 +60,7 @@ const EnrollmentList: React.FC = () => {
                     <p className="text-gray-500 font-medium mt-2">Xác nhận các khóa học bạn muốn tham gia học tập.</p>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                <div className="grid grid-cols-1 lg:grid-cols-1 gap-10">
                     {/* Course List */}
                     <div className="lg:col-span-8">
                         <div className="space-y-4 max-h-[720px] overflow-y-auto pr-2 custom-scrollbar">
@@ -75,7 +76,7 @@ const EnrollmentList: React.FC = () => {
                                                     {item.title}
                                                 </h3>
                                                 <button
-                                                    onClick={() => unenroll(item.id)}
+                                                    onClick={() => unenrollCourse(item.id)}
                                                     className="text-gray-300 hover:text-red-500 p-2 transition-colors cursor-pointer"
                                                 >
                                                     <Trash2 size={20} />
@@ -98,7 +99,7 @@ const EnrollmentList: React.FC = () => {
                         </div>
 
                         <button
-                            onClick={clearEnrollments}
+                            onClick={() => clearEnrollments()}
                             className="mt-6 text-gray-400 hover:text-red-500 font-bold text-sm transition-colors cursor-pointer flex items-center gap-2 pl-2"
                         >
                             <Trash2 size={16} />
@@ -107,7 +108,7 @@ const EnrollmentList: React.FC = () => {
                     </div>
 
                     {/* Summary Sidebar */}
-                    <div className="lg:col-span-4">
+                    <div className="lg:col-span-4 hidden">
                         <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm sticky top-24">
                             <h2 className="text-xl font-black text-gray-900 mb-6">Tổng kết ghi danh</h2>
 

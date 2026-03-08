@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Zap } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Countdown: React.FC = () => {
+    const navigate = useNavigate();
     const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number }>({
         days: 0, hours: 0, minutes: 0, seconds: 0
     });
@@ -73,7 +75,10 @@ const Countdown: React.FC = () => {
                 ))}
             </div>
 
-            <button className="bg-gray-900 text-white px-6 py-4 rounded-2xl font-bold text-sm hover:bg-amber-600 transition-all cursor-pointer shadow-lg active:scale-95 whitespace-nowrap">
+            <button
+                onClick={() => navigate('/courses')}
+                className="bg-gray-900 text-white px-6 py-4 rounded-2xl font-bold text-sm hover:bg-amber-600 transition-all cursor-pointer shadow-lg active:scale-95 whitespace-nowrap"
+            >
                 Ghé thăm khóa học
             </button>
         </div>
