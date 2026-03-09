@@ -8,10 +8,10 @@ const VirtualBot: React.FC = () => {
     const [messageIndex, setMessageIndex] = useState(0);
 
     const messages = [
-        "Chào bạn! Mình có thể giúp gì cho lộ trình học của bạn không?",
-        "Đừng bỏ lỡ ưu đãi 20% chỉ còn trong hôm nay nhé!",
-        "Bạn đã xem khóa học Bứt phá vào 10 chưa? Rất hot đấy!",
-        "Cần tư vấn về lộ trình TOEIC? Chat với mình nhé!"
+        "Hi fen! Có khóa học gì mới chưa người đẹp",
+        "Đừng bỏ lỡ bài kiếm tra chỉ còn trong hôm nay nhé!",
+        "Check khóa học hiện tại xem nào",
+        "Cần cố vấn gì về khóa học hiện tại không nào",
     ];
 
     useEffect(() => {
@@ -72,10 +72,10 @@ const VirtualBot: React.FC = () => {
                     </button>
 
                     <div className="flex gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                            <Sparkles size={20} className="text-amber-600 animate-pulse" />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                            <img src="/logoStill/language.png" alt="" className="object-cover animate-ring" />
                         </div>
-                        <p className="text-sm font-bold text-gray-700 leading-relaxed">
+                        <p className="text-sm font-medium text-gray-700 leading-relaxed">
                             {messages[messageIndex]}
                         </p>
                     </div>
