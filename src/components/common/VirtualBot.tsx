@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles } from 'lucide-react';
+import { X } from 'lucide-react';
 
 const VirtualBot: React.FC = () => {
     const [isVisible, setIsVisible] = useState(false);
