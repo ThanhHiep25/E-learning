@@ -223,7 +223,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'L
                     e.preventDefault();
                     onClose();
                 }}
-                className="absolute right-[-10px] top-[-30px] cursor-pointer p-2 bg-white rounded-full shadow-lg text-gray-400 hover:text-gray-600 border border-gray-100 transition-all"
+                className="absolute right-[-10px] top-[-30px] cursor-pointer p-2 bg-white rounded-full  text-gray-400 hover:text-gray-600 transition-all"
             >
                 <X size={20} />
             </button>

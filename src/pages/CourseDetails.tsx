@@ -9,6 +9,7 @@ import { useCourseStore } from '../store/useCourseStore';
 import { useEnrollmentStore } from '../store/useEnrollmentStore';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import CourseReviews from '../components/Review/CourseReviews';
 
 const CourseDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -230,6 +231,14 @@ const CourseDetails: React.FC = () => {
                                     </li>
                                 ))}
                             </ul>
+                        </div>
+
+                        {/* Course Reviews Section */}
+                        <div className="pt-4 border-t border-gray-100">
+                            <CourseReviews
+                                courseId={id!}
+                                isEnrolled={isEnrolled}
+                            />
                         </div>
                     </div>
 
