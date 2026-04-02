@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, User, Lock, Mail, Phone, Loader2, EyeOff, Eye } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -12,6 +13,7 @@ interface AuthModalProps {
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'LOGIN' }) => {
     const { login, register, verifyEmailCode, forgotPassword } = useAuth();
+    const navigate = useNavigate();
     const [mode, setMode] = useState<AuthMode>(initialMode);
 
     // Form states
@@ -72,14 +74,22 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'L
         setError('');
         setLoading(true);
         try {
-            const success = await login(email, password);
-            if (success) {
+            const loggedInUser = await login(email, password);
+            if (loggedInUser) {
                 if (rememberMe) {
                     localStorage.setItem('remembered_email', email);
                 } else {
                     localStorage.removeItem('remembered_email');
                 }
+                
                 onClose();
+                
+                // Redirect if Teacher or Admin
+                if (loggedInUser.role === 'ADMIN') {
+                    navigate('/admin/dashboard');
+                } else if (loggedInUser.role === 'TEACHER') {
+                    navigate('/teacher/dashboard');
+                }
             } else {
                 setError('Email hoặc mật khẩu không chính xác');
             }
@@ -172,9 +182,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'L
             // Wait a bit to show success message before closing/logging in
             setTimeout(async () => {
                 // Try to login if not already logged in by verifyEmailCode
-                const loggedIn = await login(pendingRegister.email, pendingRegister.password);
-                if (loggedIn) {
+                const loggedInUser = await login(pendingRegister.email, pendingRegister.password);
+                if (loggedInUser) {
                     onClose();
+                    
+                    // Redirect if Teacher or Admin
+                    if (loggedInUser.role === 'ADMIN') {
+                        navigate('/admin/dashboard');
+                    } else if (loggedInUser.role === 'TEACHER') {
+                        navigate('/teacher/dashboard');
+                    }
                 }
             }, 1000);
         } catch (err) {

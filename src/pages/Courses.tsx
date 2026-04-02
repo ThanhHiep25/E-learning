@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, LayoutGrid, List, Brain } from 'lucide-react';
 import CourseCard from '../components/home/CourseCard';
 import { useCourseStore } from '../store/useCourseStore';
 import { categoryService } from '../services/category.service';
+import LearningPathAssistant from '../components/learning-path/LearningPathAssistant';
 import { type FrontendCourse } from '../services/course.service';
 
 const PAGE_SIZE = 6;
@@ -22,6 +23,7 @@ const Courses: React.FC = () => {
     const [categories, setCategories] = useState<string[]>(['Tất cả']);
     const [currentPage, setCurrentPage] = useState(1);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
     useEffect(() => {
         loadCourses();
@@ -178,6 +180,25 @@ const Courses: React.FC = () => {
                                     Liên hệ ngay
                                 </button>
                             </div>
+                            {/* Learning Path Advisor */}
+                            <div className="bg-linear-to-br from-indigo-50 to-blue-50 border border-blue-100 p-4 rounded-2xl relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-16 h-16 bg-blue-100 rounded-full -mr-8 -mt-8 opacity-50" />
+                                <div className="relative z-10 flex flex-col gap-3">
+                                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg border border-white/20">
+                                        <Brain size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-black text-blue-800 uppercase tracking-tighter decoration-amber-400 underline decoration-2">Lộ trình học tập</p>
+                                        <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-widest italic font-mono">Personalized AI Path</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setIsAssistantOpen(true)}
+                                        className="w-full py-3 bg-gray-900 text-white rounded-xl text-xs font-black hover:bg-amber-600 transition-all shadow-md group-hover:scale-[1.02] cursor-pointer"
+                                    >
+                                        Khám phá ngay →
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </aside>
 
@@ -219,7 +240,7 @@ const Courses: React.FC = () => {
 
                         {/* Course Grid */}
                         {paginatedCourses.length > 0 ? (
-                            <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                            <div className={`grid gap-2 md:gap-8 ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
                                 {paginatedCourses.map((course: FrontendCourse) => (
                                     <div key={course.id}>
                                         <CourseCard course={course} />
@@ -283,6 +304,12 @@ const Courses: React.FC = () => {
                     </main>
                 </div>
             </div>
+            {/* Adaptive Learning Assistant Modal */}
+            <LearningPathAssistant 
+                isOpen={isAssistantOpen} 
+                onClose={() => setIsAssistantOpen(false)}
+                initialCategory={selectedCategory !== 'Tất cả' ? selectedCategory : undefined}
+            />
         </div>
     );
 };

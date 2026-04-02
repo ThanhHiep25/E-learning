@@ -8,6 +8,7 @@ import AuthModal from '../auth/AuthModal';
 import { navigationConfig } from '../../config/navigation';
 import SearchSpotlight from './SearchSpotlight';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
     onMenuClick: () => void;
@@ -20,6 +21,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     const [isAuthOpen, setIsAuthOpen] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     const openAuth = (mode: 'LOGIN' | 'REGISTER') => {
         setAuthMode(mode);
@@ -91,7 +93,9 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
                         {/* Desktop Navigation - Ultra Clean */}
                         <nav className="hidden lg:flex items-center gap-2">
-                            {navigationConfig.map((item) => (
+                            {navigationConfig
+                                .filter(item => !item.roles || (user && item.roles.includes(user.role as any)))
+                                .map((item) => (
                                 <div key={item.label} className="relative group/nav">
                                     <NavLink
                                         to={item.path}
@@ -166,6 +170,8 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                                 </button>
 
                             </div>
+                            
+                            <NotificationBell />
 
                             <div
                                 onClick={() => navigate('/registrations')}
@@ -181,8 +187,11 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
                             <div className="flex items-center gap-3 pl-2 border-l border-gray-100">
                                 {user ? (
-                                    <div className="relative group/user">
-                                        <button className="flex items-center gap-3 p-1 rounded-2xl hover:bg-gray-50 transition-all duration-300 cursor-pointer border border-transparent hover:border-gray-100 px-3 py-1.5">
+                                    <div className="relative">
+                                        <button 
+                                            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                                            className={`flex items-center gap-3 p-1 rounded-2xl transition-all duration-300 cursor-pointer border border-transparent px-3 py-1.5 ${isUserMenuOpen ? 'bg-amber-50 border-amber-100' : 'hover:bg-gray-50'}`}
+                                        >
                                             <div className="relative">
                                                 <img src={user.avatar} alt={user.fullName} className="w-10 h-10 rounded-full shadow-sm object-cover" />
                                                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
@@ -191,60 +200,75 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                                                 <p className="text-xs font-black text-gray-900 leading-none">{user.fullName}</p>
                                                 <p className="text-[9px] text-amber-600 font-extrabold mt-1 opacity-70">{user.role}</p>
                                             </div>
-                                            <ChevronDown size={14} className="text-gray-400 group-hover/user:rotate-180 transition-transform duration-300" />
+                                            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                                         </button>
 
-                                        {/* Dropdown refined */}
-                                        <div className="absolute top-full pt-2 right-0 w-64 opacity-0 translate-y-4 pointer-events-none group-hover/user:opacity-100 group-hover/user:translate-y-0 group-hover/user:pointer-events-auto transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) z-50">
-                                            <div className="bg-white rounded-[28px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden">
-                                                <div className="p-6 bg-linear-to-br from-gray-900 to-gray-800 text-white">
-                                                    <p className="text-[10px] font-bold text-amber-500 mb-1 opacity-50">Tài khoản đang hoạt động</p>
-                                                    <p className="text-xs font-bold opacity-90 ">{user.email}</p>
+                                        {/* Dropdown Menu */}
+                                        {isUserMenuOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setIsUserMenuOpen(false)}></div>
+                                                <div className="absolute top-full pt-2 right-0 w-64 opacity-100 translate-y-0 pointer-events-auto transition-all duration-500 z-50">
+                                                    <div className="bg-white rounded-[28px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden">
+                                                        <div className="p-6 bg-linear-to-br from-gray-900 to-gray-800 text-white">
+                                                            <p className="text-[10px] font-bold text-amber-500 mb-1 opacity-50">Tài khoản đang hoạt động</p>
+                                                            <p className="text-xs font-bold opacity-90 ">{user.email}</p>
+                                                        </div>
+                                                        <div className="p-3 space-y-1">
+                                                            <button
+                                                                onClick={() => {
+                                                                    navigate('/profile');
+                                                                    setIsUserMenuOpen(false);
+                                                                }}
+                                                                className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all duration-300">
+                                                                <div className="p-2 bg-gray-50 group-hover/item:bg-white rounded-lg transition-colors">
+                                                                    <UserIcon size={18} />
+                                                                </div>
+                                                                <span className="font-bold">Thông tin cá nhân</span>
+                                                            </button>
+                                                            {(user.role === 'TEACHER' || user.role === 'ADMIN') && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        navigate(user.role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard');
+                                                                        setIsUserMenuOpen(false);
+                                                                    }}
+                                                                    className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-amber-600 bg-amber-50/50 hover:bg-amber-50 rounded-xl transition-all duration-300"
+                                                                >
+                                                                    <div className="p-2 bg-white rounded-lg">
+                                                                        <Layout size={18} />
+                                                                    </div>
+                                                                    <span className="font-black ">Trang quản lý</span>
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => {
+                                                                    navigate('/my-learning');
+                                                                    setIsUserMenuOpen(false);
+                                                                }}
+                                                                className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all duration-300">
+                                                                <div className="p-2 bg-gray-50 group-hover/item:bg-white rounded-lg transition-colors">
+                                                                    <BookOpen size={18} />
+                                                                </div>
+                                                                <span className="font-bold">Khóa học của tôi</span>
+                                                            </button>
+                                                            <div className="h-px bg-gray-50 my-2 mx-4"></div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    logout();
+                                                                    navigate('/');
+                                                                    setIsUserMenuOpen(false);
+                                                                }}
+                                                                className="w-full cursor-pointer flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-all duration-300"
+                                                            >
+                                                                <div className="p-2 bg-red-50 group-hover:bg-white rounded-lg transition-colors">
+                                                                    <LogOut size={18} />
+                                                                </div>
+                                                                <span className="font-bold">Đăng xuất</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="p-3 space-y-1">
-                                                    <button
-                                                        onClick={() => navigate('/profile')}
-                                                        className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all duration-300">
-                                                        <div className="p-2 bg-gray-50 group-hover/item:bg-white rounded-lg transition-colors">
-                                                            <UserIcon size={18} />
-                                                        </div>
-                                                        <span className="font-bold">Thông tin cá nhân</span>
-                                                    </button>
-                                                    {(user.role === 'TEACHER' || user.role === 'ADMIN') && (
-                                                        <button
-                                                            onClick={() => navigate(user.role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard')}
-                                                            className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-amber-600 bg-amber-50/50 hover:bg-amber-50 rounded-xl transition-all duration-300"
-                                                        >
-                                                            <div className="p-2 bg-white rounded-lg">
-                                                                <Layout size={18} />
-                                                            </div>
-                                                            <span className="font-black ">Trang quản lý</span>
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => navigate('/my-learning')}
-                                                        className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all duration-300">
-                                                        <div className="p-2 bg-gray-50 group-hover/item:bg-white rounded-lg transition-colors">
-                                                            <BookOpen size={18} />
-                                                        </div>
-                                                        <span className="font-bold">Khóa học của tôi</span>
-                                                    </button>
-                                                    <div className="h-px bg-gray-50 my-2 mx-4"></div>
-                                                    <button
-                                                        onClick={() => {
-                                                            logout();
-                                                            navigate('/');
-                                                        }}
-                                                        className="w-full cursor-pointer flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-all duration-300"
-                                                    >
-                                                        <div className="p-2 bg-red-50 group-hover:bg-white rounded-lg transition-colors">
-                                                            <LogOut size={18} />
-                                                        </div>
-                                                        <span className="font-bold">Đăng xuất</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
+                                            </>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-4">

@@ -14,6 +14,11 @@ export type BackendUser = {
   avatar?: string;
   isEmailVerified?: boolean;
   createdAt?: string;
+  chatBannedUntil?: string | null;
+  chatBanReason?: string | null;
+  skills?: Array<{ name: string; level: number }>;
+  experience?: Array<{ startDate: string; endDate?: string; position: string; company: string }>;
+  education?: Array<{ startDate: string; endDate?: string; major: string; school: string }>;
 };
 
 export type FrontendUser = {
@@ -26,12 +31,20 @@ export type FrontendUser = {
   phone?: string;
   joinDate?: string;
   enrolledCourses: string[];
+  chatBannedUntil?: string | null;
+  chatBanReason?: string | null;
+  skills: Array<{ name: string; level: number }>;
+  experienceList: Array<{ startDate: string; endDate?: string; position: string; company: string }>;
+  educationList: Array<{ startDate: string; endDate?: string; major: string; school: string }>;
 };
 
 export type UpdateMeInput = {
   name?: string;
   phone?: string;
   avatar?: string;
+  skills?: Array<{ name: string; level: number }>;
+  experience?: Array<{ startDate: string; endDate?: string; position: string; company: string }>;
+  education?: Array<{ startDate: string; endDate?: string; major: string; school: string }>;
 };
 
 export type UploadAvatarResponse = {
@@ -63,6 +76,11 @@ export function mapBackendUserToFrontend(user: BackendUser): FrontendUser {
     phone: user.phone,
     joinDate: user.createdAt,
     enrolledCourses: [],
+    chatBannedUntil: user.chatBannedUntil,
+    chatBanReason: user.chatBanReason,
+    skills: user.skills || [],
+    experienceList: user.experience || [],
+    educationList: user.education || [],
   };
 }
 

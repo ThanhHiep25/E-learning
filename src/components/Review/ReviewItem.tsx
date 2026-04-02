@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Star, MoreVertical, Trash2, Edit2, X } from 'lucide-react';
 import type { Review } from '../../services/review.service';
-import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { safeFormat } from '../../utils/dateUtils';
 
 interface ReviewItemProps {
     review: Review;
@@ -45,15 +44,7 @@ const ReviewItem: React.FC<ReviewItemProps> = ({ review, isOwner, onEdit, onDele
                                     ))}
                                 </div>
                                 <span className="text-xs text-gray-400 font-medium">
-                                    {(() => {
-                                        try {
-                                            if (!review.createdAt) return 'Vừa xong';
-                                            const d = new Date(review.createdAt);
-                                            return isNaN(d.getTime()) ? 'Vừa xong' : format(d, 'dd MMMM, yyyy', { locale: vi });
-                                        } catch (e) {
-                                            return 'Vừa xong';
-                                        }
-                                    })()}
+                                    {safeFormat(review.createdAt, 'dd MMMM, yyyy')}
                                 </span>
                             </div>
                         </div>

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, BookOpen, LogOut, Menu, X, ChevronLeft, CreditCard, Star, Tags } from 'lucide-react';
+import { LayoutDashboard, Users, BookOpen, LogOut, Menu, X, ChevronLeft, CreditCard, Star, Tags, Flag, Brain } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 const AdminLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -19,8 +20,11 @@ const AdminLayout: React.FC = () => {
     { label: 'Người dùng', path: '/admin/users', icon: Users },
     { label: 'Khóa học', path: '/admin/courses', icon: BookOpen },
     { label: 'Thanh toán', path: '/admin/payments', icon: CreditCard },
+    { label: 'Test đầu vào', path: '/admin/placement-tests', icon: Flag },
     { label: 'Đánh giá', path: '/admin/reviews', icon: Star },
     { label: 'Danh mục', path: '/admin/categories', icon: Tags },
+    { label: 'Diễn đàn', path: '/admin/reports', icon: Flag },
+    { label: 'Cấu hình AI', path: '/admin/ai-settings', icon: Brain },
   ];
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -105,19 +109,29 @@ const AdminLayout: React.FC = () => {
       </aside>
 
       <main className="flex-1 h-full overflow-y-auto relative z-10 scroll-smooth bg-gray-50/50">
-        <div className="sticky top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex items-center justify-between px-6 lg:hidden z-30">
-          <div className="flex items-center gap-3">
+        {/* Top bar (for both desktop and mobile) */}
+        <div className="sticky top-0 right-0 left-0 h-20 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex items-center justify-between px-8 lg:px-12 z-40">
+          <div className="flex items-center gap-3 lg:hidden">
             <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black text-xs italic">
               L<span className="text-amber-500">M</span>
             </div>
             <h2 className="text-sm font-black text-gray-900 uppercase tracking-widest italic">Admin</h2>
           </div>
-          <button
-            onClick={toggleSidebar}
-            className="p-2 text-gray-900 hover:bg-gray-100 rounded-xl transition-all active:scale-95"
-          >
-            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          
+          <div className="hidden lg:block">
+            <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">{menuItems.find(i => window.location.pathname.startsWith(i.path))?.label || 'Dashboard'}</h2>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <NotificationBell />
+            
+            <button
+              onClick={toggleSidebar}
+              className="p-2.5 text-gray-900 hover:bg-gray-100 rounded-2xl transition-all active:scale-95 lg:hidden"
+            >
+              {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
         <div className="p-4 md:p-8 lg:p-12">

@@ -5,6 +5,7 @@ import CourseCard from '../components/home/CourseCard';
 import { useCourseStore } from '../store/useCourseStore';
 import { Sparkles, GraduationCap, Flame, ArrowRight, Users } from 'lucide-react';
 import slideShowLogo from '../config/slide-show';
+import PersonalizedSection from '../components/home/PersonalizedSection';
 
 const Home: React.FC = () => {
     const navigate = useNavigate();
@@ -45,9 +46,11 @@ const Home: React.FC = () => {
                 <Banner />
             </section>
 
+            {/* AI Personalized Journey Section */}
+            <PersonalizedSection />
 
             {/* Featured Courses Section */}
-            <section className="max-w-[1440px] mx-auto px-4 md:px-8">
+            <section className="max-w-7xl mx-auto px-4 md:px-8">
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-12">
                     <div className="space-y-4">
                         <div className="inline-flex items-center gap-2 bg-red-50 text-red-600 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">

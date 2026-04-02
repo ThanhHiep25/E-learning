@@ -10,6 +10,7 @@ import { useEnrollmentStore } from '../store/useEnrollmentStore';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import CourseReviews from '../components/Review/CourseReviews';
+import ForumSection from '../components/course/ForumSection';
 
 const CourseDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -90,7 +91,7 @@ const CourseDetails: React.FC = () => {
                                 </span>
                                 <span className="flex items-center gap-1.5 text-gray-400 text-[10px] font-bold uppercase ml-2">
                                     <Clock size={12} />
-                                    Cập nhật {course.lastUpdated}
+                                    Cập nhật {course.lastUpdated ? new Date(course.lastUpdated).toLocaleDateString('vi-VN') : 'Unknown'}
                                 </span>
                             </div>
 
@@ -191,28 +192,41 @@ const CourseDetails: React.FC = () => {
 
                                         <div className={`transition-all duration-300 ease-in-out ${activeAccordion === module.id ? 'max-h-[1000px] border-t border-gray-50' : 'max-h-0'}`}>
                                             <div className="p-2 space-y-1">
-                                                {lessons.map((lesson) => (
-                                                    <div key={lesson.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-amber-50 group transition-all">
-                                                        <div className="flex items-center gap-3">
-                                                            {lesson.isPreview ? (
-                                                                <Play size={16} className="text-amber-500 fill-amber-500" />
-                                                            ) : (
-                                                                <Lock size={16} className="text-gray-300" />
-                                                            )}
-                                                            <span className={`text-sm ${lesson.isPreview ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
-                                                                {lesson.title}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            {lesson.isPreview && (
-                                                                <span className="text-[10px] font-black uppercase text-amber-600 border border-amber-200 px-2 py-0.5 rounded-md bg-white">
-                                                                    Học thử
+                                                {lessons.map((lesson) => {
+                                                    const canAccess = isEnrolled || lesson.isPreview;
+                                                    return (
+                                                        <div
+                                                            key={lesson.id}
+                                                            onClick={() => {
+                                                                if (canAccess) {
+                                                                    navigate(`/course/${id}/lesson/${lesson.id}`);
+                                                                } else {
+                                                                    toast.error('Vui lòng ghi danh để xem nội dung này');
+                                                                }
+                                                            }}
+                                                            className={`flex items-center justify-between p-3 rounded-xl transition-all group ${canAccess ? 'hover:bg-amber-50 cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                {canAccess ? (
+                                                                    <Play size={16} className={`text-amber-500 ${lesson.isPreview ? 'fill-amber-500' : ''}`} />
+                                                                ) : (
+                                                                    <Lock size={16} className="text-gray-400" />
+                                                                )}
+                                                                <span className={`text-sm ${canAccess ? 'font-bold text-gray-800' : 'text-gray-500 font-medium'}`}>
+                                                                    {lesson.title}
                                                                 </span>
-                                                            )}
-                                                            <span className="text-xs text-gray-400 font-medium">{lesson.duration}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-4">
+                                                                {lesson.isPreview && !isEnrolled && (
+                                                                    <span className="text-[10px] font-black uppercase text-amber-600 border border-amber-200 px-2.5 py-1 rounded-lg bg-amber-50 shadow-sm shadow-amber-200/20">
+                                                                        Học thử
+                                                                    </span>
+                                                                )}
+                                                                <span className="text-xs text-gray-400 font-bold tracking-tighter">{lesson.duration}</span>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     </div>
@@ -240,6 +254,21 @@ const CourseDetails: React.FC = () => {
                                 isEnrolled={isEnrolled}
                             />
                         </div>
+
+                        {/* Course Discussion Section */}
+                        <div className="pt-8 border-t border-gray-100">
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-2xl font-bold text-gray-900">
+                                    Thảo luận khóa học <span className="text-amber-500">.</span>
+                                </h2>
+                            </div>
+                            <div className="h-[600px]">
+                                <ForumSection
+                                    courseId={id!}
+                                    type="course"
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     {/* Right Side: Sticky Purchase Card */}
@@ -257,11 +286,13 @@ const CourseDetails: React.FC = () => {
                             {/* Enrollment Info */}
                             <div className="space-y-1">
                                 <div className="flex items-baseline gap-3">
-                                    <span className="text-2xl font-black text-amber-600 block">KHOÁ HỌC NỘI BỘ</span>
+                                    <span className="text-3xl font-black text-amber-600 block">
+                                        {course.price === 0 ? 'MIỄN PHÍ' : `${course.price?.toLocaleString()}đ`}
+                                    </span>
                                 </div>
                                 <p className="text-gray-500 text-sm font-bold flex items-center gap-1 mt-1">
                                     <ShieldCheck size={14} className="text-emerald-500" />
-                                    Dành cho sinh viên của trường
+                                    {course.price === 0 ? 'Mở đăng ký công khai' : 'Mua một lần, sở hữu trọn đời'}
                                 </p>
                             </div>
 
@@ -285,10 +316,9 @@ const CourseDetails: React.FC = () => {
                                             }
                                             try {
                                                 await enrollCourse(id);
-                                                toast.success('Ghi danh thành công! Hãy bắt đầu học nhé.');
-                                                // Đợi một chút để đảm bảo store đã được cập nhật hoàn toàn
+                                                // Wait a bit to ensure store is synced
                                                 setTimeout(() => {
-                                                    navigate('/my-learning');
+                                                    navigate(`/course/${id}/lesson`);
                                                 }, 300);
                                             } catch (err) {
                                                 toast.error(err instanceof Error ? err.message : 'Ghi danh thất bại');
@@ -296,7 +326,7 @@ const CourseDetails: React.FC = () => {
                                         }}
                                         className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-2xl shadow-xl shadow-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
                                     >
-                                        GHI DANH NGAY
+                                        {course.price === 0 ? 'GHI DANH NGAY' : 'MUA KHÓA HỌC'}
                                         <ArrowRight size={20} />
                                     </button>
                                 )}

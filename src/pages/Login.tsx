@@ -14,7 +14,13 @@ const Login: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      navigate(from, { replace: true });
+      if (user.role === 'ADMIN') {
+        navigate('/admin/dashboard', { replace: true });
+      } else if (user.role === 'TEACHER') {
+        navigate('/teacher/dashboard', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     }
   }, [user, from, navigate]);
 
@@ -25,7 +31,10 @@ const Login: React.FC = () => {
         initialMode="LOGIN"
         onClose={() => {
           setOpen(false);
-          navigate(closeTo, { replace: true });
+          // Only navigate to home if user didn't log in (modal closed manually)
+          if (!localStorage.getItem('elearning_user')) {
+            navigate(closeTo, { replace: true });
+          }
         }}
       />
     </div>

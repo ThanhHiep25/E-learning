@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Star, Users, BookOpen, Heart, ArrowRight, PlayCircle } from 'lucide-react';
 import { type FrontendCourse } from '../../services/course.service';
 import { useEnrollmentStore } from '../../store/useEnrollmentStore';
+import { useCourseStore } from '../../store/useCourseStore';
 
 interface CourseCardProps {
     course: FrontendCourse;
@@ -11,7 +12,8 @@ interface CourseCardProps {
 const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
     const navigate = useNavigate();
     const { enrolledCourses } = useEnrollmentStore();
-    const isEnrolled = enrolledCourses.some(item => item.id === course.id);
+    const { loadCourseDetail, getCurriculumIndex } = useCourseStore();
+    const isEnrolled = enrolledCourses.some(item => String(item.id) === String(course.id));
 
     const teacherInitials = (name: string) => {
         const parts = String(name || '')
@@ -23,10 +25,23 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         return `${first}${last}`.toUpperCase() || 'GV';
     };
 
-    const handleAction = (e: React.MouseEvent) => {
+    const handleAction = async (e: React.MouseEvent) => {
         e.stopPropagation();
         if (isEnrolled) {
-            navigate(`/course/${course.id}/lesson`);
+            // Kiểm tra xem đã có curriculum chưa
+            let idx = getCurriculumIndex(String(course.id));
+            if (!idx || idx.lessonIds.length === 0) {
+                // Nếu chưa có (thì từ list), tải detail để lấy first lesson
+                const detail = await loadCourseDetail(String(course.id));
+                idx = detail ? getCurriculumIndex(String(course.id)) : undefined;
+            }
+
+            if (idx && idx.lessonIds.length > 0) {
+                navigate(`/course/${course.id}/lesson/${idx.lessonIds[0]}`);
+            } else {
+                // Fallback nếu không tìm được bài học nào
+                navigate(`/course/${course.id}/lesson`);
+            }
         } else {
             navigate(`/course/${course.id}`);
         }
@@ -61,7 +76,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
             </div>
 
             {/* Content */}
-            <div className="p-6 flex flex-col flex-1 gap-4">
+            <div className="p-6 flex flex-col flex-1 gap-2">
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1 text-amber-500">
@@ -83,6 +98,8 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
                     <h3 className="text-lg font-bold text-gray-800 line-clamp-2 min-h-14 group-hover:text-amber-600 transition-colors">
                         {course.title}
                     </h3>
+
+                    <p className="text-sm text-gray-600 line-clamp-2">{course.description}</p>
                 </div>
 
                 {/* Stats */}
@@ -109,11 +126,11 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
                         )}
                         <span className="text-xs font-semibold text-gray-600">{course.teacher}</span>
                     </div>
-                    {/* <div className="text-right">
-                        <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded tracking-widest border border-amber-100">
-                            {course.price}đ
+                    <div className="text-right">
+                        <span className={`text-[10px] font-black ${course.price === 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-amber-600 bg-amber-50 border-amber-100'} px-2 py-1 rounded tracking-widest border`}>
+                            {course.price === 0 ? 'MIỄN PHÍ' : `${course.price?.toLocaleString()}đ`}
                         </span>
-                    </div> */}
+                    </div>
                 </div>
             </div>
 

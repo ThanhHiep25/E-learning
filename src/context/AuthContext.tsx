@@ -8,7 +8,7 @@ import { useCourseStore } from '../store/useCourseStore';
 
 interface AuthContextType {
     user: User | null;
-    login: (email: string, password: string) => Promise<boolean>;
+    login: (email: string, password: string) => Promise<User | null>;
     register: (userData: Partial<User>) => Promise<boolean>;
     verifyEmailCode: (token: string) => Promise<boolean>;
     forgotPassword: (email: string) => Promise<boolean>;
@@ -59,21 +59,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         syncEnrollments();
     }, [user]);
 
-    const login = async (email: string, password: string): Promise<boolean> => {
+    const login = async (email: string, password: string): Promise<User | null> => {
         try {
             enrollmentService.clearCache();
             resetEnrollments();
             resetCourses();
 
             const result = await authService.login({ email, password });
-            setUser(result.user as unknown as User);
+            const loggedInUser = result.user as unknown as User;
+            setUser(loggedInUser);
             localStorage.setItem('elearning_user', JSON.stringify(result.user));
-            return true;
+            return loggedInUser;
         } catch (err) {
             if (err instanceof ApiError && err.status === 403) {
                 throw err;
             }
-            return false;
+            return null;
         }
     };
 
@@ -135,6 +136,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 name: updatedData.fullName,
                 phone: updatedData.phone,
                 avatar: updatedData.avatar,
+                skills: updatedData.skills,
+                experience: updatedData.experienceList,
+                education: updatedData.educationList,
             });
             setUser(me as unknown as User);
             localStorage.setItem('elearning_user', JSON.stringify(me));

@@ -9,9 +9,11 @@ import {
     LogOut,
     Menu,
     X,
-    ChevronLeft
+    ChevronLeft,
+    CalendarDays
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 const TeacherLayout: React.FC = () => {
     const { user, logout } = useAuth();
@@ -28,6 +30,7 @@ const TeacherLayout: React.FC = () => {
         { label: 'Thống kê chính', path: '/teacher/dashboard', icon: LayoutDashboard },
         { label: 'Thống kê chi tiết', path: '/teacher/statistics', icon: BarChart3 },
         { label: 'Quản lý Khóa học', path: '/teacher/courses', icon: BookOpen },
+        { label: 'Lên lịch dạy', path: '/teacher/schedule', icon: CalendarDays },
         { label: 'Quản lý Học viên', path: '/teacher/students', icon: Users },
         { label: 'Đề thi & Kiểm tra', path: '/teacher/quizzes', icon: FileText },
     ];
@@ -116,20 +119,29 @@ const TeacherLayout: React.FC = () => {
 
             {/* Main Content Area */}
             <main className="flex-1 h-full overflow-y-auto relative z-10 scroll-smooth bg-gray-50/50">
-                {/* Top bar for mobile */}
-                <div className="sticky top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex items-center justify-between px-6 lg:hidden z-30">
-                    <div className="flex items-center gap-3">
+                {/* Top bar (for both desktop and mobile) */}
+                <div className="sticky top-0 right-0 left-0 h-20 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex items-center justify-between px-8 lg:px-12 z-40">
+                    <div className="flex items-center gap-3 lg:hidden">
                         <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black text-xs italic">
                             L<span className="text-amber-500">M</span>
                         </div>
-                        <h2 className="text-sm font-bold text-gray-900 uppercase tracking-tight">Teacher LM</h2>
+                        <h2 className="text-sm font-bold text-gray-900 uppercase tracking-tight">Teacher Portal</h2>
                     </div>
-                    <button
-                        onClick={toggleSidebar}
-                        className="p-2 text-gray-900 hover:bg-gray-100 rounded-xl transition-all active:scale-95"
-                    >
-                        {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-                    </button>
+                    
+                    <div className="hidden lg:block">
+                        <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">{menuItems.find(i => window.location.pathname.startsWith(i.path))?.label || 'Tổng quan'}</h2>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <NotificationBell />
+                        
+                        <button
+                            onClick={toggleSidebar}
+                            className="p-2.5 text-gray-900 hover:bg-gray-100 rounded-2xl transition-all active:scale-95 lg:hidden"
+                        >
+                            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-4 md:p-8 lg:p-12">

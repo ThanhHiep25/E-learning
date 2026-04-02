@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, Edit3, Trash2, FileText, Layout, CheckCircle2, Loader2, X, FileQuestion, ArrowLeft } from 'lucide-react';
+import { Plus, Edit3, Trash2, FileText, Layout, CheckCircle2, Loader2, X, FileQuestion, ArrowLeft, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
     teacherService,
@@ -20,6 +20,18 @@ const QuizQuestionEditor: React.FC = () => {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Quiz Edit States
+    const [isEditQuizModalOpen, setIsEditQuizModalOpen] = useState(false);
+    const [editTitle, setEditTitle] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [editTimeLimit, setEditTimeLimit] = useState(30);
+    const [editMaxScore, setEditMaxScore] = useState(100);
+    const [editPassingScore, setEditPassingScore] = useState(60);
+    const [editStartTime, setEditStartTime] = useState('');
+    const [editEndTime, setEditEndTime] = useState('');
+    const [editShowResults, setEditShowResults] = useState(true);
+    const [isUpdatingQuiz, setIsUpdatingQuiz] = useState(false);
+
     const [qType, setQType] = useState<BackendTeacherQuestion['type']>('multiple_choice');
     const [qText, setQText] = useState('');
     const [qImageUrl, setQImageUrl] = useState('');
@@ -28,6 +40,7 @@ const QuizQuestionEditor: React.FC = () => {
     const [qPoints, setQPoints] = useState<number>(1);
     const [qExplanation, setQExplanation] = useState('');
     const [qCreating, setQCreating] = useState(false);
+    const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
 
     const [mediaUploading, setMediaUploading] = useState<'image' | 'audio' | 'video' | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -86,6 +99,63 @@ const QuizQuestionEditor: React.FC = () => {
         };
     }, [previewImage, previewAudio, previewVideo]);
 
+    // Auto-suggest end time based on start time and duration
+    useEffect(() => {
+        if (editStartTime && editTimeLimit) {
+            try {
+                const startDate = new Date(editStartTime);
+                if (!isNaN(startDate.getTime())) {
+                    const endDate = new Date(startDate.getTime() + editTimeLimit * 60000);
+                    const year = endDate.getFullYear();
+                    const month = String(endDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(endDate.getDate()).padStart(2, '0');
+                    const hours = String(endDate.getHours()).padStart(2, '0');
+                    const mins = String(endDate.getMinutes()).padStart(2, '0');
+                    setEditEndTime(`${year}-${month}-${day}T${hours}:${mins}`);
+                }
+            } catch (err) {
+                console.error('Error calculating end time', err);
+            }
+        }
+    }, [editStartTime, editTimeLimit]);
+
+    const openEditQuiz = () => {
+        if (!quizDetail) return;
+        setEditTitle(quizDetail.title || '');
+        setEditDescription(quizDetail.description || '');
+        setEditTimeLimit(quizDetail.timeLimit || 30);
+        setEditMaxScore(quizDetail.maxScore || 100);
+        setEditPassingScore(quizDetail.passingScore || 60);
+        setEditStartTime(quizDetail.startTime ? new Date(quizDetail.startTime).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16) : '');
+        setEditEndTime(quizDetail.endTime ? new Date(quizDetail.endTime).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16) : '');
+        setEditShowResults(quizDetail.showResults ?? true);
+        setIsEditQuizModalOpen(true);
+    };
+
+    const submitUpdateQuiz = async () => {
+        if (!id) return;
+        try {
+            setIsUpdatingQuiz(true);
+            await teacherService.updateQuiz(String(id), {
+                title: editTitle,
+                description: editDescription,
+                timeLimit: editTimeLimit,
+                maxScore: editMaxScore,
+                passingScore: editPassingScore,
+                startTime: editStartTime || null,
+                endTime: editEndTime || null,
+                showResults: editShowResults,
+            });
+            toast.success('Cập nhật thông tin bài thi thành công');
+            setIsEditQuizModalOpen(false);
+            await reloadQuizDetail();
+        } catch (err: any) {
+            toast.error(err?.message || 'Không thể cập nhật thông tin');
+        } finally {
+            setIsUpdatingQuiz(false);
+        }
+    };
+
     const uploadQuestionMedia = async (kind: 'image' | 'audio' | 'video', file: File) => {
         try {
             setMediaUploading(kind);
@@ -113,6 +183,57 @@ const QuizQuestionEditor: React.FC = () => {
         } finally {
             setMediaUploading(null);
         }
+    };
+
+    const handleEditClick = (q: BackendTeacherQuestion) => {
+        const { cleaned, image, audio, video } = extractMedia(String(q.content || ''));
+        setEditingQuestionId(String(q.id));
+        setQType(q.type as any);
+        setQText(cleaned);
+        setQImageUrl(image || '');
+        setQAudioUrl(audio || '');
+        setQVideoUrl(video || '');
+        setQPoints(Number(q.points ?? 1));
+        setQExplanation(q.explanation || '');
+
+        if (q.type === 'multiple_choice' && Array.isArray(q.options)) {
+            const opts = [...q.options];
+            while (opts.length < 4) opts.push('');
+            setMcOptions(opts);
+            const correctIdx = opts.indexOf(String(q.correctAnswer));
+            setMcCorrectIndex(correctIdx !== -1 ? correctIdx : 0);
+        }
+
+        if (q.type === 'true_false') {
+            setTfCorrect(String(q.correctAnswer) === 'true');
+        }
+
+        if (q.type === 'short_answer') {
+            setShortCorrect(String(q.correctAnswer));
+        }
+
+        // Scroll to form
+        window.scrollTo({ top: 300, behavior: 'smooth' });
+    };
+
+    const cancelEdit = () => {
+        setEditingQuestionId(null);
+        setQText('');
+        setQImageUrl('');
+        setQAudioUrl('');
+        setQVideoUrl('');
+        setQPoints(1);
+        setQExplanation('');
+        setMcOptions(['', '', '', '']);
+        setMcCorrectIndex(0);
+        setTfCorrect(true);
+        setShortCorrect('');
+        if (previewImage) URL.revokeObjectURL(previewImage);
+        if (previewAudio) URL.revokeObjectURL(previewAudio);
+        if (previewVideo) URL.revokeObjectURL(previewVideo);
+        setPreviewImage(null);
+        setPreviewAudio(null);
+        setPreviewVideo(null);
     };
 
     const submitAddQuestion = async () => {
@@ -158,36 +279,31 @@ const QuizQuestionEditor: React.FC = () => {
 
         try {
             setQCreating(true);
-            await teacherService.addQuestion(String(id), {
-                type: qType,
-                content,
-                options,
-                correctAnswer,
-                points: qPoints,
-                explanation: qExplanation || undefined,
-            });
-            toast.success('Đã thêm câu hỏi');
-            setQText('');
-            setQImageUrl('');
-            setQAudioUrl('');
-            setQVideoUrl('');
-            setQPoints(1);
-            setQExplanation('');
-            setMcOptions(['', '', '', '']);
-            setMcCorrectIndex(0);
-            setTfCorrect(true);
-            setShortCorrect('');
-
-            if (previewImage) URL.revokeObjectURL(previewImage);
-            if (previewAudio) URL.revokeObjectURL(previewAudio);
-            if (previewVideo) URL.revokeObjectURL(previewVideo);
-            setPreviewImage(null);
-            setPreviewAudio(null);
-            setPreviewVideo(null);
-
+            if (editingQuestionId) {
+                await teacherService.updateQuestion(editingQuestionId, {
+                    type: qType,
+                    content,
+                    options,
+                    correctAnswer,
+                    points: qPoints,
+                    explanation: qExplanation || undefined,
+                });
+                toast.success('Đã cập nhật câu hỏi');
+            } else {
+                await teacherService.addQuestion(String(id), {
+                    type: qType,
+                    content,
+                    options,
+                    correctAnswer,
+                    points: qPoints,
+                    explanation: qExplanation || undefined,
+                });
+                toast.success('Đã thêm câu hỏi');
+            }
+            cancelEdit();
             await reloadQuizDetail();
         } catch (err: any) {
-            toast.error(err?.message || 'Không thể thêm câu hỏi');
+            toast.error(err?.message || 'Thao tác thất bại');
         } finally {
             setQCreating(false);
         }
@@ -229,9 +345,19 @@ const QuizQuestionEditor: React.FC = () => {
                             Quay lại danh sách
                         </button>
                         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Soạn thảo bộ câu hỏi</h1>
-                        <div className="text-sm font-bold text-amber-600 mt-1 uppercase tracking-widest flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-                            {quizDetail?.title || 'Đang tải...'}
+                        <div className="flex items-center gap-4 mt-1">
+                            <div className="text-sm font-bold text-amber-600 uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+                                {quizDetail?.title || 'Đang tải...'}
+                            </div>
+                            {quizDetail && (
+                                <button
+                                    onClick={openEditQuiz}
+                                    className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-sm font-bold border border-amber-100 hover:bg-amber-100 transition-all flex items-center gap-2 cursor-pointer"
+                                >
+                                    <Edit3 size={10} /> Sửa thông tin
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -247,7 +373,7 @@ const QuizQuestionEditor: React.FC = () => {
                                         {questionLoading ? 'Đang tải...' : `${(quizDetail?.questions || []).length} câu hỏi`}
                                     </div>
                                 </div>
-                                <div className="bg-amber-50 px-4 py-2 rounded-2xl border border-amber-100 text-xs font-bold text-amber-600 shadow-sm">
+                                <div className="px-4 py-2 text-xs font-bold text-amber-600 ">
                                     {quizDetail?.questions?.reduce((sum, q) => sum + Number(q.points || 0), 0) || 0}đ
                                 </div>
                             </div>
@@ -265,12 +391,20 @@ const QuizQuestionEditor: React.FC = () => {
                                                     </div>
                                                     <div className="text-sm font-bold text-gray-900 leading-relaxed line-clamp-2">{m.cleaned || '(không có nội dung)'}</div>
                                                 </div>
-                                                <button
-                                                    onClick={() => deleteQuestion(String(q.id))}
-                                                    className="w-10 h-10 rounded-xl font-bold text-red-600 bg-red-50 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center cursor-pointer shrink-0 shadow-sm shadow-red-100"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <div className="flex flex-col gap-2 shrink-0">
+                                                    <button
+                                                        onClick={() => handleEditClick(q)}
+                                                        className="w-10 h-10 rounded-xl font-bold text-amber-600 bg-amber-50 hover:bg-amber-500 hover:text-white transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-amber-100"
+                                                    >
+                                                        <Edit3 size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteQuestion(String(q.id))}
+                                                        className="w-10 h-10 rounded-xl font-bold text-red-600 bg-red-50 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-red-100"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -290,26 +424,32 @@ const QuizQuestionEditor: React.FC = () => {
                         <div className="bg-white rounded-[48px] border border-gray-100 p-10 shadow-xl shadow-gray-200/50">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-10">
                                 <div>
-                                    <div className="text-2xl font-bold text-gray-900 tracking-tight">Thêm câu hỏi mới</div>
-                                    <div className="text-sm text-gray-400 mt-1">Thiết lập chi tiết nội dung, tài nguyên và đáp án</div>
+                                    <div className="text-2xl font-bold text-gray-900 tracking-tight">
+                                        {editingQuestionId ? 'Cập nhật câu hỏi' : 'Thêm câu hỏi mới'}
+                                    </div>
+                                    <div className="text-sm text-gray-400 mt-1">
+                                        {editingQuestionId ? 'Bạn đang ở chế độ chỉnh sửa câu hỏi hiện có' : 'Thiết lập chi tiết nội dung, tài nguyên và đáp án'}
+                                    </div>
                                 </div>
 
-                                <div className="bg-gray-50 p-5 rounded-[28px] border border-gray-100 flex items-center gap-6">
+                                <div className=" p-5 rounded-[28px] flex items-center gap-6">
                                     <div className="text-xs font-bold text-gray-400 uppercase whitespace-nowrap">Số điểm</div>
-                                    <input
-                                        type="number"
-                                        min={1}
+                                    <select
                                         value={qPoints}
-                                        onChange={(e) => setQPoints(Number(e.target.value || 1))}
-                                        className="w-24 bg-white rounded-2xl px-5 py-3 border border-gray-200 font-bold text-gray-900 outline-none focus:ring-8 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-center text-lg"
-                                    />
+                                        onChange={(e) => setQPoints(Number(e.target.value))}
+                                        className="w-24 bg-white rounded-2xl px-5 py-3 border border-gray-200 font-bold text-gray-900 outline-none focus:ring-8 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-center text-lg cursor-pointer appearance-none"
+                                    >
+                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
+                                            <option key={v} value={v}>{v}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
                             <div className="space-y-10">
                                 {/* Question Type Selection */}
                                 <div className="space-y-4">
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-3 ml-2">
+                                    <div className="text-xs font-bold text-gray-400 uppercase flex items-center gap-3 ml-2">
                                         <Layout size={16} className="text-amber-500" />
                                         Loại câu hỏi
                                     </div>
@@ -324,7 +464,7 @@ const QuizQuestionEditor: React.FC = () => {
                                                 key={t.id}
                                                 type="button"
                                                 onClick={() => setQType(t.id as any)}
-                                                className={`px-6 py-4 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all duration-500 ${qType === t.id ? 'bg-gray-900 text-white shadow-2xl shadow-gray-400 scale-105' : 'bg-white text-gray-500 border border-gray-100 hover:border-amber-300 hover:text-amber-600'}`}
+                                                className={`px-6 cursor-pointer py-4 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all duration-500 ${qType === t.id ? 'bg-gray-900 text-white shadow-2xl shadow-gray-400 scale-105' : 'bg-white text-gray-500 border border-gray-100 hover:border-amber-300 hover:text-amber-600'}`}
                                             >
                                                 {t.label}
                                             </button>
@@ -334,21 +474,21 @@ const QuizQuestionEditor: React.FC = () => {
 
                                 {/* Question Content Input */}
                                 <div className="space-y-4">
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-3 ml-2">
+                                    <div className="text-xs font-bold text-gray-400 uppercase flex items-center gap-3 ml-2">
                                         <Edit3 size={16} className="text-amber-500" />
                                         Nội dung câu hỏi
                                     </div>
                                     <textarea
                                         value={qText}
                                         onChange={(e) => setQText(e.target.value)}
-                                        className="w-full bg-gray-50/50 rounded-[40px] px-8 py-8 border border-gray-100 font-bold text-gray-900 outline-none min-h-[180px] focus:bg-white focus:ring-12 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-lg placeholder:text-gray-300 leading-relaxed shadow-inner"
-                                        placeholder="Mời nhập nội dung câu hỏi tại đây..."
+                                        className="w-full cursor-text bg-gray-50/50 rounded-xl px-8 py-8 border border-gray-100 text-gray-900 outline-none min-h-[180px] focus:bg-white focus:ring-12 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-lg placeholder:text-gray-300 leading-relaxed"
+                                        placeholder=""
                                     />
                                 </div>
 
                                 {/* Multimedia Section */}
                                 <div className="space-y-4">
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-3 ml-2">
+                                    <div className="text-xs font-bold text-gray-400 uppercase flex items-center gap-3 ml-2">
 
                                         Đính kèm đa phương tiện
                                     </div>
@@ -458,12 +598,12 @@ const QuizQuestionEditor: React.FC = () => {
 
                                 {/* Answers */}
                                 <div className="space-y-4">
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-3 ml-2">
+                                    <div className="text-xs font-bold text-gray-400 uppercase flex items-center gap-3 ml-2">
                                         <CheckCircle2 size={16} className="text-amber-500" />
                                         Thiết lập đáp án chính xác
                                     </div>
 
-                                    <div className="bg-gray-50/50 p-8 rounded-[40px] border border-gray-100">
+                                    <div className="bg-gray-50/50 rounded-[40px] border border-gray-100">
                                         {qType === 'multiple_choice' && (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {mcOptions.map((opt, idx) => (
@@ -482,7 +622,7 @@ const QuizQuestionEditor: React.FC = () => {
                                                                 next[idx] = e.target.value;
                                                                 setMcOptions(next);
                                                             }}
-                                                            className="flex-1 bg-transparent py-2 text-md font-bold outline-none placeholder:text-gray-300"
+                                                            className="flex-1 bg-transparent py-2 text-md font-medium outline-none placeholder:text-gray-300"
                                                             placeholder={`Nhập phương án ${String.fromCharCode(65 + idx)}...`}
                                                         />
                                                         {mcCorrectIndex === idx && <CheckCircle2 size={24} className="text-emerald-500 mr-2" />}
@@ -493,13 +633,13 @@ const QuizQuestionEditor: React.FC = () => {
 
                                         {qType === 'true_false' && (
                                             <div className="grid grid-cols-2 gap-6">
-                                                <button type="button" onClick={() => setTfCorrect(true)} className={`py-10 rounded-[32px] font-black text-lg border-2 transition-all duration-500 cursor-pointer ${tfCorrect ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-2xl shadow-emerald-200 scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200'}`}>ĐÚNG (TRUE)</button>
-                                                <button type="button" onClick={() => setTfCorrect(false)} className={`py-10 rounded-[32px] font-black text-lg border-2 transition-all duration-500 cursor-pointer ${!tfCorrect ? 'bg-red-50 text-red-700 border-red-500 shadow-2xl shadow-red-200 scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200'}`}>SAI (FALSE)</button>
+                                                <button type="button" onClick={() => setTfCorrect(true)} className={`py-3 rounded-[32px] font-black text-md border-2 transition-all duration-500 cursor-pointer ${tfCorrect ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-2xl shadow-emerald-200 scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200'}`}>ĐÚNG (TRUE)</button>
+                                                <button type="button" onClick={() => setTfCorrect(false)} className={`py-3 rounded-[32px] font-black text-md border-2 transition-all duration-500 cursor-pointer ${!tfCorrect ? 'bg-red-50 text-red-700 border-red-500 shadow-2xl shadow-red-200 scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200'}`}>SAI (FALSE)</button>
                                             </div>
                                         )}
 
                                         {qType === 'short_answer' && (
-                                            <input value={shortCorrect} onChange={(e) => setShortCorrect(e.target.value)} className="w-full bg-white rounded-3xl px-8 py-6 border-2 border-transparent shadow-sm focus:border-amber-500 outline-none font-bold text-lg text-gray-900 transition-all placeholder:text-gray-300" placeholder="Nhập từ hoặc cụm từ đáp án chính xác..." />
+                                            <input value={shortCorrect} onChange={(e) => setShortCorrect(e.target.value)} className="w-full bg-white rounded-3xl px-8 py-6 border-2 border-transparent shadow-sm focus:border-amber-500 outline-none font-medium text-md text-gray-900 transition-all placeholder:text-gray-300" placeholder="Nhập từ hoặc cụm từ đáp án chính xác..." />
                                         )}
 
                                         {qType === 'essay' && (
@@ -507,7 +647,7 @@ const QuizQuestionEditor: React.FC = () => {
                                                 <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
                                                     <FileText size={32} />
                                                 </div>
-                                                <p className="font-black text-gray-400 uppercase tracking-widest text-xs">Phần tự luận sẽ được Giảng viên chấm điểm sau khi nộp</p>
+                                                <p className="font-medium text-gray-400 text-md">Phần tự luận sẽ được Giảng viên chấm điểm sau khi nộp</p>
                                             </div>
                                         )}
                                     </div>
@@ -515,10 +655,18 @@ const QuizQuestionEditor: React.FC = () => {
 
                                 {/* Submit Section */}
                                 <div className="pt-6 flex justify-end gap-4 border-t border-gray-50">
+                                    {editingQuestionId && (
+                                        <button
+                                            onClick={cancelEdit}
+                                            className="px-8 py-5 bg-gray-50 text-gray-500 rounded-[24px] font-bold text-[12px] uppercase tracking-widest hover:bg-gray-100 transition-all duration-500"
+                                        >
+                                            HỦY CHỈNH SỬA
+                                        </button>
+                                    )}
                                     <button
                                         disabled={qCreating}
                                         onClick={submitAddQuestion}
-                                        className="px-12 py-5 bg-gray-900 text-white rounded-[24px] font-black text-[12px] uppercase tracking-widest hover:bg-amber-600 transition-all duration-500 shadow-2xl shadow-gray-400 flex items-center justify-center gap-4 active:scale-95 disabled:opacity-50"
+                                        className={`px-12 py-5 rounded-[24px] cursor-pointer font-bold text-[12px] transition-all duration-500 shadow-2xl flex items-center justify-center gap-4 active:scale-95 disabled:opacity-50 ${editingQuestionId ? 'bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700' : 'bg-gray-900 text-white shadow-gray-400 hover:bg-amber-600'}`}
                                     >
                                         {qCreating ? (
                                             <>
@@ -527,8 +675,8 @@ const QuizQuestionEditor: React.FC = () => {
                                             </>
                                         ) : (
                                             <>
-                                                LƯU CÂU HỎI
-                                                <Plus size={24} />
+                                                {editingQuestionId ? 'CẬP NHẬT CÂU HỎI' : 'LƯU CÂU HỎI'}
+                                                {editingQuestionId ? <CheckCircle2 size={24} /> : <Plus size={24} />}
                                             </>
                                         )}
                                     </button>
@@ -596,6 +744,133 @@ const QuizQuestionEditor: React.FC = () => {
                         >
                             <X size={24} />
                         </button>
+                    </div>
+                </div>
+            )}
+            {/* Edit Quiz Detail Modal */}
+            {isEditQuizModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-xl bg-white rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden">
+                        <div className="p-6 border-b border-gray-50 flex justify-between items-center">
+                            <div>
+                                <div className="text-lg font-black text-gray-900">Sửa thông tin đề thi</div>
+                                <div className="text-sm font-bold text-gray-500 mt-1 uppercase tracking-tight line-clamp-1">{quizDetail?.title}</div>
+                            </div>
+                            <button onClick={() => setIsEditQuizModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-all font-bold cursor-pointer"><X size={20} className="text-gray-400" /></button>
+                        </div>
+
+                        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                            <div>
+                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Tiêu đề</div>
+                                <input
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:bg-white focus:border-amber-300 transition-all"
+                                />
+                            </div>
+
+                            <div>
+                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Mô tả</div>
+                                <textarea
+                                    value={editDescription}
+                                    onChange={(e) => setEditDescription(e.target.value)}
+                                    className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none min-h-[100px] focus:bg-white focus:border-amber-300 transition-all"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Thời gian làm bài</div>
+                                    <select
+                                        value={editTimeLimit}
+                                        onChange={(e) => setEditTimeLimit(Number(e.target.value))}
+                                        className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none cursor-pointer focus:bg-white focus:border-amber-300 transition-all"
+                                    >
+                                        {[10, 15, 20, 30, 45, 60, 90, 120, 180].map(m => (
+                                            <option key={m} value={m}>{m} phút</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Điểm tối đa</div>
+                                    <select
+                                        value={editMaxScore}
+                                        onChange={(e) => setEditMaxScore(Number(e.target.value))}
+                                        className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none cursor-pointer focus:bg-white focus:border-amber-300 transition-all"
+                                    >
+                                        {[10, 20, 50, 100].map(s => (
+                                            <option key={s} value={s}>{s} điểm</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Điểm đạt</div>
+                                    <input
+                                        type="number"
+                                        value={editPassingScore}
+                                        onChange={(e) => setEditPassingScore(Number(e.target.value || 0))}
+                                        className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:bg-white focus:border-amber-300 transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-gray-50 p-4 rounded-3xl border border-gray-100">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                        <Calendar size={12} className="text-amber-500" />
+                                        Thời gian mở đề
+                                    </div>
+                                    <input
+                                        type="datetime-local"
+                                        value={editStartTime}
+                                        onChange={(e) => setEditStartTime(e.target.value)}
+                                        className="w-full bg-transparent font-bold text-gray-800 outline-none cursor-pointer"
+                                    />
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-3xl border border-gray-100">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                        <Calendar size={12} className="text-amber-500" />
+                                        Thời gian đóng đề
+                                    </div>
+                                    <input
+                                        type="datetime-local"
+                                        value={editEndTime}
+                                        onChange={(e) => setEditEndTime(e.target.value)}
+                                        className="w-full bg-transparent font-bold text-gray-800 outline-none cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                                <div className="flex-1">
+                                    <div className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Công bộ kết quả</div>
+                                    <p className="text-[10px] font-medium text-amber-500">Cho phép học viên xem đáp án sau khi nộp</p>
+                                </div>
+                                <button
+                                    onClick={() => setEditShowResults(!editShowResults)}
+                                    className={`w-12 h-6 rounded-full transition-all relative ${editShowResults ? 'bg-amber-500' : 'bg-gray-300'}`}
+                                >
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editShowResults ? 'left-7' : 'left-1'}`}></div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-50 flex items-center justify-end gap-3">
+                            <button
+                                disabled={isUpdatingQuiz}
+                                onClick={() => setIsEditQuizModalOpen(false)}
+                                className="px-4 py-2 rounded-xl font-black text-gray-600 bg-gray-50 disabled:opacity-50 cursor-pointer"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                disabled={isUpdatingQuiz}
+                                onClick={submitUpdateQuiz}
+                                className="px-5 py-2 rounded-xl font-black text-white bg-gray-900 hover:bg-amber-600 disabled:opacity-50 cursor-pointer shadow-xl shadow-gray-200/50"
+                            >
+                                {isUpdatingQuiz ? 'Đang lưu...' : 'Lưu bài thi'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

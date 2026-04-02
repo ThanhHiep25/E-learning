@@ -30,6 +30,7 @@ export type BackendLecture = {
   order?: number;
   isPreview?: boolean;
   attachments?: any;
+  content?: string;
 };
 
 export type BackendChapter = {
@@ -56,7 +57,9 @@ function normalizeIsPreview(value: unknown): boolean {
   if (value === false) return false;
   if (value === 1) return true;
   if (value === 0) return false;
-  const s = String(value ?? "").trim().toLowerCase();
+  const s = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (!s) return false;
   if (s === "1" || s === "true" || s === "yes") return true;
   if (s === "0" || s === "false" || s === "no") return false;
@@ -88,6 +91,9 @@ export type FrontendCourse = {
       duration: string;
       isPreview: boolean;
       videoUrl?: string;
+      type?: string;
+      content?: string;
+      attachments?: any[];
     }[];
   }[];
   tags: string[];
@@ -95,7 +101,9 @@ export type FrontendCourse = {
   lastUpdated: string;
 };
 
-export function mapBackendCourseToFrontend(course: BackendCourseDetail): FrontendCourse {
+export function mapBackendCourseToFrontend(
+  course: BackendCourseDetail,
+): FrontendCourse {
   const chapters = course.Chapters || [];
   const curriculum = chapters
     .slice()
@@ -113,6 +121,8 @@ export function mapBackendCourseToFrontend(course: BackendCourseDetail): Fronten
           isPreview: normalizeIsPreview((lec as any)?.isPreview),
           videoUrl: lec.contentUrl,
           type: lec.type,
+          content: (lec as any).content,
+          attachments: lec.attachments,
         })),
     }));
 
@@ -129,8 +139,8 @@ export function mapBackendCourseToFrontend(course: BackendCourseDetail): Fronten
       undefined,
     image: course.imageUrl || "/elearning-1.jpg",
     category: "Tất cả",
-    rating: 0,
-    reviewCount: 0,
+    rating: Number(course.rating ?? 0),
+    reviewCount: Number(course.reviewCount ?? 0),
     students: 0,
     level: "Mọi cấp độ",
     totalLessons,
@@ -148,7 +158,9 @@ export function mapBackendCourseToFrontend(course: BackendCourseDetail): Fronten
 export const courseService = {
   async listCourses(q?: string): Promise<FrontendCourse[]> {
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const data = await apiRequest<{ courses: (BackendFormattedCourse | BackendCourseListItem)[] }>(`courses${query}`, {
+    const data = await apiRequest<{
+      courses: (BackendFormattedCourse | BackendCourseListItem)[];
+    }>(`courses${query}`, {
       method: "GET",
       auth: false,
     });
@@ -157,7 +169,11 @@ export const courseService = {
       // Your backend already formats published courses to FE shape.
       // Keep fallback mapping for legacy payloads.
       const maybe = c as BackendFormattedCourse;
-      if (typeof maybe.category === "string" && typeof maybe.teacher === "string" && typeof maybe.image === "string") {
+      if (
+        typeof maybe.category === "string" &&
+        typeof maybe.teacher === "string" &&
+        typeof maybe.image === "string"
+      ) {
         return {
           id: String(maybe.id),
           title: String(maybe.title),
@@ -173,7 +189,9 @@ export const courseService = {
           duration: String(maybe.duration ?? ""),
           description: String(maybe.description ?? ""),
           willLearn: Array.isArray(maybe.willLearn) ? maybe.willLearn : [],
-          requirements: Array.isArray(maybe.requirements) ? maybe.requirements : [],
+          requirements: Array.isArray(maybe.requirements)
+            ? maybe.requirements
+            : [],
           curriculum: Array.isArray(maybe.curriculum)
             ? maybe.curriculum.map((m: any) => ({
                 ...m,
@@ -199,13 +217,19 @@ export const courseService = {
   },
 
   async getCourseDetail(id: string): Promise<FrontendCourse> {
-    const data = await apiRequest<{ course: BackendFormattedCourse | BackendCourseDetail }>(`courses/${id}`, {
+    const data = await apiRequest<{
+      course: BackendFormattedCourse | BackendCourseDetail;
+    }>(`courses/${id}`, {
       method: "GET",
       auth: false,
     });
 
     const maybe = data.course as BackendFormattedCourse;
-    if (typeof maybe.category === "string" && typeof maybe.teacher === "string" && Array.isArray(maybe.curriculum)) {
+    if (
+      typeof maybe.category === "string" &&
+      typeof maybe.teacher === "string" &&
+      Array.isArray(maybe.curriculum)
+    ) {
       return {
         id: String(maybe.id),
         title: String(maybe.title),
@@ -221,7 +245,9 @@ export const courseService = {
         duration: String(maybe.duration ?? ""),
         description: String(maybe.description ?? ""),
         willLearn: Array.isArray(maybe.willLearn) ? maybe.willLearn : [],
-        requirements: Array.isArray(maybe.requirements) ? maybe.requirements : [],
+        requirements: Array.isArray(maybe.requirements)
+          ? maybe.requirements
+          : [],
         curriculum: Array.isArray(maybe.curriculum)
           ? maybe.curriculum.map((m: any) => ({
               ...m,
@@ -229,6 +255,9 @@ export const courseService = {
                 ? m.lessons.map((l: any) => ({
                     ...l,
                     isPreview: normalizeIsPreview(l?.isPreview),
+                    type: l?.type,
+                    content: l?.content,
+                    attachments: l?.attachments,
                   }))
                 : [],
             }))
@@ -240,5 +269,19 @@ export const courseService = {
     }
 
     return mapBackendCourseToFrontend(data.course as BackendCourseDetail);
+  },
+
+  async getMyCourses(): Promise<BackendCourseListItem[]> {
+    const data = await apiRequest<{ courses: BackendCourseListItem[] }>("teacher/courses", {
+      method: "GET",
+    });
+    return data.courses || [];
+  },
+
+  async getEnrolledCourses(): Promise<BackendCourseListItem[]> {
+    const data = await apiRequest<{ courses: BackendCourseListItem[] }>("student/enrollments", {
+      method: "GET",
+    });
+    return data.courses || [];
   },
 };

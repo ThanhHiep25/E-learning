@@ -138,7 +138,6 @@ const Payment: React.FC = () => {
                     setIsProcessing(true);
                     try {
                       await paymentService.verifyPayment({ paymentId: pendingPayment.id });
-                      toast.success('Xác thực thanh toán thành công');
                       await syncEnrollments();
                       navigate('/my-learning');
                     } catch (err) {
@@ -168,7 +167,6 @@ const Payment: React.FC = () => {
                     });
 
                     if (paymentMethod === 'mock') {
-                      toast.success(result.message || 'Thanh toán thành công');
                       await syncEnrollments();
                       navigate('/my-learning');
                       return;
@@ -176,9 +174,7 @@ const Payment: React.FC = () => {
 
                     if ((result as any)?.paymentUrl) {
                       window.open((result as any).paymentUrl as string, '_blank', 'noopener,noreferrer');
-                      toast.success(result.message || 'Vui lòng hoàn tất thanh toán ở tab mới');
                     } else {
-                      toast.success(result.message || 'Yêu cầu thanh toán đã được tạo');
                     }
 
                     const payment = (result as any)?.payment;

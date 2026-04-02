@@ -10,6 +10,8 @@ export interface Lesson {
   title: string;
   duration: string;
   isPreview: boolean;
+  type?: string;
+  content?: string;
   videoUrl?: string;
   attachments?: LessonAttachment[];
 }
@@ -30,7 +32,7 @@ export interface Course {
   rating: number;
   reviewCount: number;
   students: number;
-  level: "Cơ bản" | "Trung cấp" | "Nâng cao" | "Mọi cấp độ";
+  level: "Cơ bản" | "Sơ cấp" | "Trung cấp" | "Nâng cao" | "Mọi cấp độ";
   totalLessons: number;
   duration: string;
   description: string;

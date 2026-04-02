@@ -6,11 +6,13 @@ import {
     Save, ArrowLeft, Layout,
     FileText, Image as ImageIcon, Link as LinkIcon,
     File as FileIcon, X, Eye, EyeOff,
-    LoaderCircle
+    LoaderCircle, Music
 } from 'lucide-react';
 import { type CurriculumModule, type Lesson, type LessonAttachment } from '../../config/mock-data';
 import toast from 'react-hot-toast';
 import { teacherService, type BackendTeacherChapter, type BackendTeacherLecture } from '../../services/teacher.service';
+import ReactQuill from 'react-quill-new';
+import 'quill/dist/quill.snow.css';
 
 const ContentEditor: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -30,6 +32,26 @@ const ContentEditor: React.FC = () => {
     const [newChapterTitle, setNewChapterTitle] = useState('');
     const [isCreatingChapter, setIsCreatingChapter] = useState(false);
 
+    // Giải mã HTML entities (biến &lt; thành <, &gt; thành >, ...) mà không mất thẻ
+    const decodeHTML = (html: string) => {
+        if (!html) return '';
+
+        // Nếu chuỗi chứa các thẻ HTML thực sự (<p>, <ul>, ...), có thể nó đã được giải mã
+        if (/<[a-z][\s\S]*>/i.test(html)) {
+            return html;
+        }
+
+        return html
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&copy;/g, '©')
+            .replace(/&reg;/g, '®');
+    };
+
     const mapBackendLectureToLesson = (lecture: BackendTeacherLecture): Lesson => {
         const sec = Number(lecture.duration ?? 0);
         const m = Math.floor(sec / 60);
@@ -43,6 +65,7 @@ const ContentEditor: React.FC = () => {
             isPreview: Boolean((lecture as any).isPreview),
             attachments: Array.isArray((lecture as any).attachments) ? (lecture as any).attachments : [],
             videoUrl: lecture.contentUrl || '',
+            content: decodeHTML((lecture as any).content || ''),
             type: lecture.type,
         } as any;
     };
@@ -172,7 +195,7 @@ const ContentEditor: React.FC = () => {
         }
     };
 
-    const addLesson = (mIdx: number) => {
+    const addLesson = (mIdx: number, type: string = 'video') => {
         const run = async () => {
             const module = curriculum[mIdx];
             if (!module) return;
@@ -180,8 +203,8 @@ const ContentEditor: React.FC = () => {
             try {
                 const lecture = await teacherService.createLecture({
                     chapterId: String(module.id),
-                    title: 'Bài học mới',
-                    type: 'video',
+                    title: type === 'text' ? 'Bài học văn bản mới' : 'Bài học mới',
+                    type: type,
                     duration: parseDurationToSeconds('05:00'),
                     order: module.lessons.length,
                 });
@@ -195,6 +218,7 @@ const ContentEditor: React.FC = () => {
 
                 setEditingLesson({ mIdx, lIdx: module.lessons.length });
                 setEditingModuleIdx(null);
+                toast.success(`Đã thêm bài học ${type.toUpperCase()}`);
             } catch (e) {
                 toast.error(e instanceof Error ? e.message : 'Tạo bài giảng thất bại');
             }
@@ -227,6 +251,7 @@ const ContentEditor: React.FC = () => {
                                 title: lesson.title,
                                 type: String((lesson as any).type || 'video'),
                                 contentUrl: (lesson as any).videoUrl || undefined,
+                                content: (lesson as any).content || undefined,
                                 duration: parseDurationToSeconds(lesson.duration),
                                 isPreview: Boolean((lesson as any).isPreview),
                                 attachments: Array.isArray((lesson as any).attachments) ? (lesson as any).attachments : [],
@@ -527,7 +552,12 @@ const ContentEditor: React.FC = () => {
                                                 >
                                                     <div className="flex items-center gap-5 pr-4 flex-1">
                                                         <div className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-colors ${editingLesson?.mIdx === mIdx && editingLesson?.lIdx === lIdx ? 'bg-amber-600 text-white' : 'bg-gray-50 text-gray-400 group-hover/lesson:bg-amber-50 group-hover/lesson:text-amber-500'}`}>
-                                                            <Video size={20} />
+                                                            {(lesson as any).type === 'video' ? <Video size={20} /> :
+                                                                (lesson as any).type === 'audio' ? <Music size={20} /> :
+                                                                    (lesson as any).type === 'text' ? <FileText size={20} /> :
+                                                                        (lesson as any).type === 'quiz' ? <Layout size={20} /> :
+                                                                            (lesson as any).type === 'pdf' ? <FileText size={20} className="text-red-500" /> :
+                                                                                <FileIcon size={20} />}
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <h4 className="font-bold text-gray-900 group-hover/lesson:text-amber-600 transition-colors truncate">{lesson.title}</h4>
@@ -573,13 +603,29 @@ const ContentEditor: React.FC = () => {
                                                 </div>
                                             ))}
 
-                                            <button
-                                                onClick={() => addLesson(mIdx)}
-                                                className="w-full py-5 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-black text-[11px] uppercase tracking-widest hover:border-amber-300 hover:text-amber-600 hover:bg-white transition-all flex items-center justify-center gap-3 mt-4"
-                                            >
-                                                <Plus size={18} />
-                                                Thêm bài giảng mới
-                                            </button>
+                                            <div className="flex gap-2 mt-4">
+                                                <button
+                                                    onClick={() => addLesson(mIdx, 'video')}
+                                                    className="flex-1 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-black text-[10px] uppercase tracking-widest hover:border-blue-300 hover:text-blue-600 hover:bg-white transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Video size={16} />
+                                                    + Video
+                                                </button>
+                                                <button
+                                                    onClick={() => addLesson(mIdx, 'text')}
+                                                    className="flex-1 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-black text-[10px] uppercase tracking-widest hover:border-amber-300 hover:text-amber-600 hover:bg-white transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <FileText size={16} />
+                                                    + Văn bản
+                                                </button>
+                                                <button
+                                                    onClick={() => addLesson(mIdx, 'quiz')}
+                                                    className="flex-1 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-black text-[10px] uppercase tracking-widest hover:border-emerald-300 hover:text-emerald-600 hover:bg-white transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Layout size={16} />
+                                                    + Quiz
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -598,7 +644,7 @@ const ContentEditor: React.FC = () => {
 
                         {/* Detail Editor (Right Column - Desktop Only) */}
                         {editingModuleIdx !== null && currentModule ? (
-                            <div className="lg:col-span-12 xl:col-span-5 sticky top-10 space-y-6 animate-in slide-in-from-right-10 duration-500">
+                            <div className="lg:col-span-12 xl:col-span-5 sticky top-10 space-y-6 animate-in slide-in-from-right-10 duration-500 z-40">
                                 <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden flex flex-col h-full">
                                     {/* Editor Header */}
                                     <div className="p-8 border-b border-gray-50 flex items-center justify-between">
@@ -607,7 +653,7 @@ const ContentEditor: React.FC = () => {
                                         </div>
                                         <button
                                             onClick={() => setEditingModuleIdx(null)}
-                                            className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
+                                            className="cursor-pointer p-2 text-gray-400 hover:text-gray-900 transition-colors"
                                         >
                                             <X size={24} />
                                         </button>
@@ -638,11 +684,21 @@ const ContentEditor: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div className="p-8 bg-gray-50 flex items-center justify-between border-t border-gray-100">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase">Tự động sao lưu dữ liệu</p>
+                                        <button
+                                            onClick={() => setEditingModuleIdx(null)}
+                                            className="bg-slate-900 cursor-pointer text-white px-10 py-5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl shadow-gray-200"
+                                        >
+                                            HOÀN TẤT & ĐÓNG
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ) : editingLesson && currentLesson ? (
-                            <div className="lg:col-span-12 xl:col-span-5 sticky top-10 space-y-6 animate-in slide-in-from-right-10 duration-500">
-                                <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden flex flex-col h-full max-h-[85vh]">
+                            <div className="fixed inset-0 z-100 flex justify-end bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+                                <div className="w-full md:w-[600px] lg:w-[800px] h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
                                     {/* Editor Header */}
                                     <div className="p-8 border-b border-gray-50 flex items-center justify-between">
                                         <div className="flex items-center gap-3">
@@ -653,7 +709,7 @@ const ContentEditor: React.FC = () => {
                                         </div>
                                         <button
                                             onClick={() => setEditingLesson(null)}
-                                            className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
+                                            className="cursor-pointer p-2 text-gray-400 hover:text-gray-900 transition-colors"
                                         >
                                             <X size={24} />
                                         </button>
@@ -736,12 +792,78 @@ const ContentEditor: React.FC = () => {
                                                     <option value="video">Video</option>
                                                     <option value="audio">Audio</option>
                                                     <option value="pdf">PDF</option>
+                                                    <option value="text">Văn bản (HTML)</option>
+                                                    <option value="quiz">Bài kiểm tra</option>
                                                     <option value="file">File</option>
                                                 </select>
                                             </div>
 
+
+                                            <div className="space-y-3 pt-4 border-t border-gray-50">
+                                                <div className="flex items-center justify-between ml-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileText size={16} className="text-amber-500" />
+                                                        <label className="text-[11px] font-bold text-gray-900 uppercase tracking-widest">Nội dung chi tiết (Văn bản/HTML)</label>
+                                                    </div>
+                                                    <span className="text-[9px] font-bold text-gray-400 italic">Có thể để trống</span>
+                                                </div>
+                                                <div className="bg-gray-50 border border-gray-100 rounded-3xl overflow-hidden focus-within:ring-4 focus-within:ring-amber-500/5 focus-within:border-amber-500 transition-all">
+                                                    <ReactQuill
+                                                        theme="snow"
+                                                        value={String((currentLesson as any).content || '')}
+                                                        onChange={(val: string) => updateCurrentLesson({ content: val } as any)}
+                                                        className="quill-content-editor-unified"
+                                                        placeholder=""
+                                                    />
+                                                </div>
+                                                <style>{`
+                                                    .quill-content-editor-unified .ql-container {
+                                                        min-height: 250px;
+                                                        max-height: 650px;
+                                                        font-family: inherit;
+                                                        border: none !important;
+                                                        display: flex;
+                                                        flex-direction: column;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor {
+                                                        flex: 1;
+                                                        overflow-y: auto !important;
+                                                        padding: 2rem !important;
+                                                        font-size: 1rem !important;
+                                                        line-height: 1.7 !important;
+                                                        color: #374151 !important;
+                                                    }
+                                                    /* Custom scrollbar for Quill */
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar {
+                                                        width: 6px;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-track {
+                                                        background: #f9fafb;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-thumb {
+                                                        background: #e5e7eb;
+                                                        border-radius: 10px;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-thumb:hover {
+                                                        background: #d1d5db;
+                                                    }
+                                                    .quill-content-editor-unified .ql-toolbar {
+                                                        border: none !important;
+                                                        border-bottom: 1px solid #f3f4f6 !important;
+                                                        background: #fff;
+                                                        padding: 0.75rem !important;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor.ql-blank::before {
+                                                        font-style: normal !important;
+                                                        color: #9ca3af !important;
+                                                        font-size: 0.875rem !important;
+                                                        left: 2rem !important;
+                                                    }
+                                                `}</style>
+                                            </div>
+
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Upload từ máy (Video/Audio/PDF/File)</label>
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Upload từ máy (Video/Audio/PDF/File)</label>
                                                 <input
                                                     type="file"
                                                     accept={getAcceptForLectureType(String((currentLesson as any).type || 'video'))}
@@ -761,12 +883,12 @@ const ContentEditor: React.FC = () => {
                                                     }}
                                                 />
                                                 {isUploading && (
-                                                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Đang upload...</p>
+                                                    <p className="text-[10px] font-bold text-amber-600 uppercase">Đang upload...</p>
                                                 )}
                                             </div>
 
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">URL Video Minh họa (YouTube/MP4)</label>
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">URL Video Minh họa (YouTube/MP4)</label>
                                                 <div className="relative">
                                                     <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300">
                                                         <Video size={18} />
@@ -877,7 +999,7 @@ const ContentEditor: React.FC = () => {
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <FileText size={16} className="text-amber-500" />
-                                                    <h4 className="font-black text-gray-900 text-sm italic">Tài liệu đính kèm</h4>
+                                                    <h4 className="font-bold text-gray-900 text-sm">Tài liệu đính kèm</h4>
                                                 </div>
                                                 <div className="flex gap-1">
                                                     <button
@@ -914,7 +1036,7 @@ const ContentEditor: React.FC = () => {
                                                                 </div>
                                                                 <button
                                                                     onClick={() => removeAttachment(idx)}
-                                                                    className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                                                                    className="p-1.5 cursor-pointer text-gray-300 hover:text-red-500 transition-colors"
                                                                 >
                                                                     <X size={14} />
                                                                 </button>
@@ -961,13 +1083,16 @@ const ContentEditor: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="p-8 bg-gray-50 flex items-center justify-between">
-                                        <p className="text-[9px] font-bold text-gray-400 uppercase italic">Tự động sao lưu dữ liệu tạm thời</p>
+                                    <div className="p-8 bg-gray-50 flex items-center justify-between border-t border-gray-100">
+                                        <div className="flex flex-col">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tự động sao lưu</p>
+                                            <p className="text-[9px] text-emerald-500 font-bold mt-0.5">Hệ thống đã sẵn sàng</p>
+                                        </div>
                                         <button
                                             onClick={() => setEditingLesson(null)}
-                                            className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all"
+                                            className="bg-slate-900 cursor-pointer text-white px-10 py-5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl shadow-gray-200 active:scale-95"
                                         >
-                                            Hoàn tất chi tiết
+                                            HOÀN TẤT & ĐÓNG
                                         </button>
                                     </div>
                                 </div>

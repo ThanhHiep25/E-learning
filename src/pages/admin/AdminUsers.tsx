@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, Loader2, Plus, Search, Trash2, UserRoundKey, X } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Plus, Search, Trash2, UserRoundKey, X, ShieldOff, CheckCircle } from 'lucide-react';
+import { forumService } from '../../services/forum.service';
 import toast from 'react-hot-toast';
 import { adminService, type BackendAdminUser } from '../../services/admin.service';
 
@@ -27,6 +28,13 @@ const AdminUsers: React.FC = () => {
   const [deleteUserTarget, setDeleteUserTarget] = useState<BackendAdminUser | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Ban User State
+  const [banUserTarget, setBanUserTarget] = useState<BackendAdminUser | null>(null);
+  const [isBanModalOpen, setIsBanModalOpen] = useState(false);
+  const [isBanning, setIsBanning] = useState(false);
+  const [banReason, setBanReason] = useState('Vi phạm tiêu chuẩn cộng đồng');
+  const [banUntil, setBanUntil] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
 
   const load = async () => {
     setLoading(true);
@@ -157,6 +165,46 @@ const AdminUsers: React.FC = () => {
     }
   };
 
+  const onBanClick = (u: BackendAdminUser) => {
+    setBanUserTarget(u);
+    setIsBanModalOpen(true);
+    setBanReason('Vi phạm tiêu chuẩn cộng đồng');
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 7);
+    setBanUntil(defaultDate.toISOString().split('T')[0]);
+  };
+
+  const handleBanUser = async () => {
+    if (!banUserTarget) return;
+    setIsBanning(true);
+    try {
+      await forumService.banUserForum(String(banUserTarget.id), {
+        chatBannedUntil: new Date(banUntil).toISOString(),
+        chatBanReason: banReason,
+      });
+      toast.success(`Đã cấm user ${banUserTarget.name}`);
+      setIsBanModalOpen(false);
+      setBanUserTarget(null);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Cấm user thất bại');
+    } finally {
+      setIsBanning(false);
+    }
+  };
+
+  const handleUnbanUser = async (u: BackendAdminUser) => {
+    try {
+      await forumService.banUserForum(String(u.id), {
+        chatBannedUntil: null,
+      });
+      toast.success(`Đã gỡ cấm user ${u.name}`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Gỡ cấm thất bại');
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto">
@@ -207,6 +255,7 @@ const AdminUsers: React.FC = () => {
                     <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">User</th>
                     <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Role</th>
                     <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Verified</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Thao tác</th>
                   </tr>
                 </thead>
@@ -237,6 +286,16 @@ const AdminUsers: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-5">
+                        {u.chatBannedUntil && new Date(u.chatBannedUntil) > new Date() ? (
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest bg-red-50 text-red-600 w-fit">Banned</span>
+                            <span className="text-[9px] font-bold text-red-400 mt-1">Đến: {new Date(u.chatBannedUntil).toLocaleDateString('vi-VN')}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest bg-emerald-50 text-emerald-600">Active</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-5">
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => onResetPassword(u)}
@@ -245,6 +304,23 @@ const AdminUsers: React.FC = () => {
                           >
                             <UserRoundKey size={18} />
                           </button>
+                          {u.chatBannedUntil && new Date(u.chatBannedUntil) > new Date() ? (
+                            <button
+                              onClick={() => handleUnbanUser(u)}
+                              className="cursor-pointer p-2 text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                              title="Gỡ cấm"
+                            >
+                              <CheckCircle size={18} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => onBanClick(u)}
+                              className="cursor-pointer p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                              title="Cấm user"
+                            >
+                              <ShieldOff size={18} />
+                            </button>
+                          )}
                           <button
                             onClick={() => onDelete(u)}
                             className="cursor-pointer p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
@@ -506,6 +582,72 @@ const AdminUsers: React.FC = () => {
               >
                 <X size={20} />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Ban User Modal */}
+        {isBanModalOpen && banUserTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+            <div className="w-full max-w-md bg-white rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden scale-in-center transition-all duration-300 relative">
+              <div className="bg-gray-900 p-6 flex items-center gap-4 relative text-white">
+                <div className="w-12 h-12 bg-white/10 text-white rounded-2xl flex items-center justify-center shrink-0">
+                  <ShieldOff size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black">Cấm người dùng</h3>
+                  <p className="text-xs font-bold text-white/60">Đình chỉ quyền tham gia diễn đàn</p>
+                </div>
+                <button
+                  onClick={() => setIsBanModalOpen(false)}
+                  className="absolute top-4 right-4 p-2 text-white/40 hover:text-white hover:bg-white/10 rounded-full transition-all cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-8">
+                <p className="text-sm font-bold text-slate-500 mb-4 uppercase tracking-wider">Người dùng: <span className="text-slate-900">{banUserTarget.name}</span></p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Lý do cấm</label>
+                    <textarea
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 resize-none h-24"
+                      placeholder="Nhập lý do vi phạm..."
+                      value={banReason}
+                      onChange={(e) => setBanReason(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Cấm đến ngày</label>
+                    <input
+                      type="date"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                      value={banUntil}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setBanUntil(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-8">
+                  <button
+                    onClick={() => setIsBanModalOpen(false)}
+                    className="px-6 py-3 font-bold text-slate-600 hover:bg-gray-100 rounded-xl transition-all cursor-pointer"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    disabled={isBanning || !banReason.trim()}
+                    onClick={handleBanUser}
+                    className="px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl shadow-lg transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isBanning ? 'Đang thực hiện...' : 'Xác nhận cấm'}
+                    <ShieldOff size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -11,7 +11,9 @@ export type CurriculumLesson = {
   isPreview: boolean;
   videoUrl?: string;
   type?: string;
+  content?: string;
   moduleId: string;
+  attachments?: any[];
 };
 
 export type CurriculumIndex = {
@@ -22,7 +24,10 @@ export type CurriculumIndex = {
   lessonsById: Record<string, CurriculumLesson>;
 };
 
-export function getLessonIdByProgressPercent(idx: CurriculumIndex, progressPercent: number): string | undefined {
+export function getLessonIdByProgressPercent(
+  idx: CurriculumIndex,
+  progressPercent: number,
+): string | undefined {
   if (!idx.lessonIds.length) return undefined;
 
   const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
@@ -47,6 +52,8 @@ export function buildCurriculumIndex(params: {
       isPreview: boolean;
       videoUrl?: string;
       type?: string;
+      content?: string;
+      attachments?: any[];
     }[];
   }[];
 }): CurriculumIndex {
@@ -71,7 +78,9 @@ export function buildCurriculumIndex(params: {
         isPreview: Boolean(l.isPreview),
         videoUrl: l.videoUrl,
         type: l.type,
+        content: l.content,
         moduleId,
+        attachments: l.attachments,
       };
     }
 

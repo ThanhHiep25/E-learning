@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    BookOpen, Clock, ChevronRight,
+    BookOpen, ChevronRight,
     PlayCircle, CheckCircle2, Trophy,
-    Search
+    Search,
+    BadgeCheck
 } from 'lucide-react';
 import { useEnrollmentStore } from '../store/useEnrollmentStore';
 import { type FrontendCourse } from '../services/course.service';
@@ -14,11 +15,30 @@ const MyLearning: React.FC = () => {
     const navigate = useNavigate();
     const { enrolledCourses, syncEnrollments, isLoading, courseProgress } = useEnrollmentStore();
     const { loadCourseDetail, getCurriculumIndex } = useCourseStore();
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [activeTab, setActiveTab] = React.useState<'all' | 'learning' | 'completed'>('all');
 
     useEffect(() => {
         syncEnrollments();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [syncEnrollments]);
+
+    const filteredCourses = React.useMemo(() => {
+        return enrolledCourses.filter(course => {
+            const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                course.category.toLowerCase().includes(searchQuery.toLowerCase());
+
+            const progress = Number(courseProgress[String(course.id)] ?? 0);
+
+            if (activeTab === 'learning') {
+                return matchesSearch && progress < 100;
+            }
+            if (activeTab === 'completed') {
+                return matchesSearch && progress === 100;
+            }
+            return matchesSearch;
+        });
+    }, [enrolledCourses, searchQuery, activeTab, courseProgress]);
 
     return (
         <div className="min-h-screen bg-gray-50/50 pt-24 pb-20">
@@ -63,20 +83,31 @@ const MyLearning: React.FC = () => {
                         <input
                             type="text"
                             placeholder="Tìm khóa học trong thư viện..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full pl-12 pr-4 py-4 bg-white border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 transition-all shadow-sm font-medium"
                         />
                     </div>
 
                     <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-                        <button className="whitespace-nowrap px-6 py-3 bg-white text-gray-900 border border-gray-100 rounded-xl font-bold hover:border-amber-500 transition-all shadow-sm cursor-pointer">
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            className={`whitespace-nowrap px-6 py-3 rounded-xl font-bold transition-all shadow-sm cursor-pointer border ${activeTab === 'all' ? 'bg-amber-500 text-gray-900 border-amber-500' : 'bg-white text-gray-500 border-gray-100 hover:border-amber-500'}`}
+                        >
                             Tất cả
                         </button>
-                        <button className="whitespace-nowrap px-6 py-3 text-gray-500 font-bold hover:text-amber-600 transition-all cursor-pointer">
+                        <button
+                            onClick={() => setActiveTab('learning')}
+                            className={`whitespace-nowrap px-6 py-3 rounded-xl font-bold transition-all cursor-pointer border ${activeTab === 'learning' ? 'bg-amber-500 text-gray-900 border-amber-500' : 'bg-white text-gray-500 border-gray-100 hover:text-amber-600 hover:border-amber-500'}`}
+                        >
                             Đang học
                         </button>
-                        <button className="whitespace-nowrap px-6 py-3 text-gray-500 font-bold hover:text-amber-600 transition-all cursor-pointer flex items-center gap-2">
+                        <button
+                            onClick={() => setActiveTab('completed')}
+                            className={`whitespace-nowrap px-6 py-3 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 border ${activeTab === 'completed' ? 'bg-amber-500 text-gray-900 border-amber-500' : 'bg-white text-gray-500 border-gray-100 hover:text-amber-600 hover:border-amber-500'}`}
+                        >
                             Hoàn thành
-                            <CheckCircle2 size={18} className="text-emerald-500" />
+                            <CheckCircle2 size={18} className={activeTab === 'completed' ? 'text-gray-900' : 'text-emerald-500'} />
                         </button>
                     </div>
                 </div>
@@ -88,9 +119,9 @@ const MyLearning: React.FC = () => {
                             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs animate-pulse">Đang đồng bộ hóa khóa học...</p>
                         </div>
                     </div>
-                ) : enrolledCourses.length > 0 ? (
+                ) : filteredCourses.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {enrolledCourses.map((course: FrontendCourse) => (
+                        {filteredCourses.map((course: FrontendCourse) => (
                             <div
                                 key={course.id}
                                 className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
@@ -104,26 +135,37 @@ const MyLearning: React.FC = () => {
                                     <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
                                             onClick={() => navigate(`/course/${course.id}`)}
-                                            className="w-16 h-16 bg-amber-500 text-gray-900 rounded-full flex items-center justify-center shadow-2xl hover:bg-white transition-colors animate-bounce cursor-pointer"
+                                            className="w-16 h-16 text-amber-100  rounded-full flex items-center justify-center shadow-2xl transition-colors cursor-pointer"
                                         >
-                                            <PlayCircle size={32} />
+                                            <PlayCircle size={50} />
                                         </button>
                                     </div>
                                     <div className="absolute top-4 left-4">
-                                        <span className="bg-white/90 backdrop-blur-md text-gray-900 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg">
-                                            {course.category}
+                                        <span className="bg-white/90 flex items-center gap-2 backdrop-blur-md text-gray-900 text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg">
+                                            <BadgeCheck size={18} className='text-emerald-500' /> Đã xác nhận ghi danh
                                         </span>
                                     </div>
                                 </div>
 
                                 <div className="p-6">
-                                    <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-                                        <Clock size={12} />
-                                        {course.duration}
-                                    </div>
-                                    <h3 className="text-lg font-bold text-gray-900 line-clamp-2 min-h-[56px] group-hover:text-amber-600 transition-colors mb-4">
+                                    <h3 className="text-lg font-bold text-gray-900 line-clamp-2 min-h-[56px] group-hover:text-amber-600 transition-colors mb-1">
                                         {course.title}
                                     </h3>
+                                    {/* Hiển thị GV */}
+                                    <div className="flex items-center gap-3 mb-6 bg-gray-50/50 p-2 rounded-2xl border border-gray-100/50">
+                                        <div className="relative">
+                                            <img
+                                                src={course.teacherAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(course.teacher)}`}
+                                                alt={course.teacher}
+                                                className="w-10 h-10 rounded-full object-cover shadow-sm"
+                                            />
+                                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black text-amber-600 uppercase tracking-tighter">Giảng viên</span>
+                                            <span className="text-xs font-bold text-gray-700 truncate max-w-[150px]">{course.teacher}</span>
+                                        </div>
+                                    </div>
 
                                     {/* Progress Bar */}
                                     <div className="space-y-2 mb-6">
@@ -131,7 +173,7 @@ const MyLearning: React.FC = () => {
                                             const progress = Math.min(100, Math.max(0, Number(courseProgress[String(course.id)] ?? 0)));
                                             return (
                                                 <>
-                                                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                                                    <div className="flex items-center justify-between text-[10px] font-black uppercase">
                                                         <span className="text-gray-400">Tiến độ</span>
                                                         <span className="text-amber-600">{progress}%</span>
                                                     </div>

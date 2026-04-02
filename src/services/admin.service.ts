@@ -30,6 +30,7 @@ export type BackendAdminUser = {
   email: string;
   role: 'student' | 'teacher' | 'admin';
   isEmailVerified?: boolean;
+  chatBannedUntil?: string | null;
   createdAt?: string;
 };
 
@@ -59,11 +60,21 @@ export type BackendAdminReview = {
   rating: number;
   comment?: string;
   createdAt?: string;
+  created_at?: string;
   Course?: {
     id: string | number;
     title: string;
   };
+  course?: {
+    id: string | number;
+    title: string;
+  };
   User?: {
+    id: string | number;
+    name?: string;
+    email?: string;
+  };
+  user?: {
     id: string | number;
     name?: string;
     email?: string;
@@ -94,6 +105,39 @@ export type BackendAdminPayment = {
     username?: string;
     email?: string;
     role?: string;
+  };
+};
+
+export type TrackingAnalytics = {
+  stats: {
+    totalViews: number;
+    uniqueUsers: number;
+  };
+  pageStats: Array<{
+    page: string;
+    count: number;
+  }>;
+  activities: {
+    items: Array<{
+      id: number;
+      userId: number | null;
+      action: string;
+      page: string | null;
+      userAgent: string | null;
+      ipAddress: string | null;
+      duration: number | null;
+      referrer: string | null;
+      deviceType: string | null;
+      createdAt: string;
+      user?: {
+        name: string;
+        email: string;
+      };
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
   };
 };
 
@@ -212,5 +256,17 @@ export const adminService = {
       payments: res.payments || [],
       pagination: res.pagination,
     };
+  },
+
+  async getTrackingAnalytics(params?: { page?: number; limit?: number; search?: string }): Promise<TrackingAnalytics> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.search) qs.set('search', params.search);
+    
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return await apiRequest<TrackingAnalytics>(`tracking/analytics${suffix}`, {
+      method: 'GET',
+    });
   },
 };

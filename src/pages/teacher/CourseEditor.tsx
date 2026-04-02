@@ -19,7 +19,7 @@ const CATEGORIES = [
     'Tin học văn phòng'
 ];
 
-const LEVELS = ['Mọi cấp độ', 'Cơ bản', 'Trung cấp', 'Nâng cao'] as const;
+const LEVELS = ['Mọi cấp độ', 'Cơ bản', 'Sơ cấp', 'Trung cấp', 'Nâng cao'] as const;
 
 const CourseEditor: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -48,7 +48,8 @@ const CourseEditor: React.FC = () => {
         totalLessons: 0,
         curriculum: [],
         willLearn: [],
-        requirements: []
+        requirements: [],
+        price: 0
     });
 
     const [newItem, setNewItem] = useState({ willLearn: '', requirement: '' });
@@ -85,16 +86,32 @@ const CourseEditor: React.FC = () => {
 
             try {
                 const ownerCourse = await teacherService.getCourseForOwner(String(id));
-                setFormData((prev) => ({
-                    ...prev,
-                    title: ownerCourse.title || '',
-                    description: ownerCourse.description || '',
-                    image: ownerCourse.imageUrl || prev.image,
-                    level: (ownerCourse.level as any) || LEVELS[0],
-                    duration: ownerCourse.duration || '',
-                    willLearn: Array.isArray(ownerCourse.willLearn) ? ownerCourse.willLearn : [],
-                    requirements: Array.isArray(ownerCourse.requirements) ? ownerCourse.requirements : [],
-                }));
+                setFormData((prev) => {
+                    const parseArray = (data: any) => {
+                        if (Array.isArray(data)) return data;
+                        if (typeof data === 'string' && data.startsWith('[')) {
+                            try {
+                                return JSON.parse(data);
+                            } catch (e) {
+                                console.error("Failed to parse JSON string:", data);
+                                return [];
+                            }
+                        }
+                        return [];
+                    };
+
+                    return {
+                        ...prev,
+                        title: ownerCourse.title || '',
+                        description: ownerCourse.description || '',
+                        image: ownerCourse.imageUrl || prev.image,
+                        level: (ownerCourse.level as any) || LEVELS[0],
+                        duration: ownerCourse.duration || '',
+                        willLearn: parseArray(ownerCourse.willLearn),
+                        requirements: parseArray(ownerCourse.requirements),
+                        price: Number(ownerCourse.price || 0),
+                    };
+                });
 
                 setVisibility(ownerCourse.published ? 'published' : 'draft');
             } catch (e) {
@@ -154,6 +171,7 @@ const CourseEditor: React.FC = () => {
                     published,
                     categoryId: (formData as any).categoryId ?? null,
                     imageUrl: String(formData.image || ''),
+                    price: Number(formData.price || 0),
                 });
                 toast.success('Cập nhật khóa học thành công!');
                 navigate(`/teacher/content-editor/${encodeURIComponent(String(id))}`);
@@ -169,7 +187,7 @@ const CourseEditor: React.FC = () => {
                 willLearn: Array.isArray(formData.willLearn) ? formData.willLearn : [],
                 requirements: Array.isArray(formData.requirements) ? formData.requirements : [],
                 published,
-                price: 0,
+                price: Number(formData.price || 0),
                 categoryId: (formData as any).categoryId ?? null,
                 tags: [],
             });
@@ -245,16 +263,43 @@ const CourseEditor: React.FC = () => {
                                     />
                                 </div>
 
-                                <div className="space-y-2">
+                                <div className="space-y-4">
                                     <label className="text-md font-bold text-gray-400 ml-1">Mô tả chi tiết <span className="text-red-500">*</span></label>
                                     <textarea
                                         required
-                                        rows={6}
-                                        className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 transition-all font-medium text-gray-900 resize-none leading-relaxed"
-                                        placeholder="Mô tả mục tiêu, giá trị và nội dung cốt lõi..."
+                                        className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 transition-all font-bold text-gray-900 placeholder:text-gray-300 placeholder:font-medium"
+                                        placeholder=""
                                         value={formData.description}
+                                        rows={5}
                                         onChange={e => setFormData({ ...formData, description: e.target.value })}
                                     />
+                                    {/* <div className="bg-gray-50 border border-gray-100 rounded-2xl overflow-hidden focus-within:ring-4 focus-within:ring-amber-500/10 focus-within:border-amber-500 transition-all">
+                                        <ReactQuill
+                                            theme="snow"
+                                            value={String(formData.description || '')}
+                                            onChange={(val: any) => setFormData({ ...formData, description: val })}
+                                            className="quill-course-editor"
+                                        />
+                                       
+                                    </div> */}
+                                    {/* <style>{`
+                                            .quill-course-editor .ql-container {
+                                                min-height: 200px;
+                                                font-family: inherit;
+                                                font-size: 1rem;
+                                            }
+                                            .quill-course-editor .ql-toolbar {
+                                                border: none;
+                                                border-bottom: 1px solid #f3f4f6;
+                                                background: #fff;
+                                            }
+                                            .quill-course-editor.ql-container.ql-snow {
+                                                border: none;
+                                            }
+                                            .quill-course-editor .ql-editor {
+                                                padding: 1.5rem;
+                                            }
+                                        `}</style> */}
                                 </div>
                             </div>
                         </section>
@@ -438,6 +483,26 @@ const CourseEditor: React.FC = () => {
                                             <option value="">Không có danh mục</option>
                                         )}
                                     </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-md font-bold text-gray-400 ml-1">
+                                        <span className="text-amber-500 font-black">₫</span>
+                                        Giá khóa học (VNĐ)
+                                    </div>
+                                    <input
+                                        type="number"
+                                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-sm text-gray-900"
+                                        placeholder="Ví dụ: 299000 (0 = Miễn phí)"
+                                        value={formData.price === 0 ? '' : formData.price}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setFormData({ ...formData, price: val === '' ? 0 : Number(val) });
+                                        }}
+                                    />
+                                    <p className="text-[10px] font-bold text-gray-400 ml-1 italic">
+                                        * Nhập 0 để đặt khóa học này là MIỄN PHÍ
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">

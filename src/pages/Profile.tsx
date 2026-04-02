@@ -3,13 +3,14 @@ import { useAuth } from '../context/AuthContext';
 import {
     User as UserIcon, Mail, Phone, MapPin, Calendar,
     Star, Award, BookOpen,
-    ChevronRight, CheckCircle2, MessageSquare,
-    Plus, Edit2, Zap
+    ChevronRight, CheckCircle2,
+    Plus, Edit2, Zap, Trash2, X
 } from 'lucide-react';
 import { useCourseStore } from '../store/useCourseStore';
 import { useNavigate } from 'react-router-dom';
 import { enrollmentService, type BackendEnrollment } from '../services/enrollment.service';
 import { authService } from '../services/auth.service';
+import { quizService, type PerformanceStats } from '../services/quiz.service';
 
 async function compressImage(file: File, opts: { maxSize: number; quality: number }): Promise<File> {
     if (!String(file.type || '').startsWith('image/')) return file;
@@ -57,6 +58,18 @@ const Profile: React.FC = () => {
     const [editError, setEditError] = useState('');
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [performanceStats, setPerformanceStats] = useState<PerformanceStats | null>(null);
+    const [loadingStats, setLoadingStats] = useState(false);
+
+    const [isSkillsOpen, setIsSkillsOpen] = useState(false);
+    const [isExpOpen, setIsExpOpen] = useState(false);
+    const [isEduOpen, setIsEduOpen] = useState(false);
+
+    const [tempSkills, setTempSkills] = useState<{ name: string; level: number }[]>([]);
+    const [tempExps, setTempExps] = useState<{ startDate: string; endDate?: string; position: string; company: string }[]>([]);
+    const [tempEdus, setTempEdus] = useState<{ startDate: string; endDate?: string; major: string; school: string }[]>([]);
+
+    const [savingDetails, setSavingDetails] = useState(false);
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -67,12 +80,19 @@ const Profile: React.FC = () => {
             if (!user) return;
             try {
                 setLoadingEnrollments(true);
-                const list = await enrollmentService.listMyEnrollments();
+                setLoadingStats(true);
+                const [list, stats] = await Promise.all([
+                    enrollmentService.listMyEnrollments(),
+                    quizService.getPerformanceStats()
+                ]);
                 setEnrollments(Array.isArray(list) ? list : []);
-            } catch {
+                setPerformanceStats(stats);
+            } catch (err) {
+                console.error('Error loading profile data:', err);
                 setEnrollments([]);
             } finally {
                 setLoadingEnrollments(false);
+                setLoadingStats(false);
             }
         };
 
@@ -94,6 +114,27 @@ const Profile: React.FC = () => {
         setEditError('');
     }, [isEditOpen, user]);
 
+    useEffect(() => {
+        if (!user) return;
+        setTempSkills(user.skills || []);
+        setTempExps(user.experienceList || []);
+        setTempEdus(user.educationList || []);
+    }, [user, isSkillsOpen, isExpOpen, isEduOpen]);
+
+    const handleUpdateDetails = async (payload: any) => {
+        try {
+            setSavingDetails(true);
+            await updateUser(payload);
+            setIsSkillsOpen(false);
+            setIsExpOpen(false);
+            setIsEduOpen(false);
+        } catch (err) {
+            console.error('Update details error:', err);
+        } finally {
+            setSavingDetails(false);
+        }
+    };
+
 
 
 
@@ -101,10 +142,10 @@ const Profile: React.FC = () => {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="text-center">
-                    <h2 className="text-2xl font-black text-gray-900 mb-4">Bạn cần đăng nhập để xem thông tin này</h2>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Bạn cần đăng nhập để xem thông tin này</h2>
                     <button
                         onClick={() => navigate('/')}
-                        className="bg-amber-500 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all cursor-pointer"
+                        className="bg-amber-500 text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all cursor-pointer"
                     >
                         VỀ TRANG CHỦ
                     </button>
@@ -124,6 +165,16 @@ const Profile: React.FC = () => {
         })
         .filter(Boolean) as { enrollment: BackendEnrollment; course: NonNullable<BackendEnrollment['Course']> }[];
 
+    const formatDateRange = (start?: string, end?: string) => {
+        if (!start) return '';
+        try {
+            const s = new Date(start).toLocaleDateString('vi-VN');
+            const e = end ? new Date(end).toLocaleDateString('vi-VN') : 'Hiện tại';
+            return `${s} - ${e}`;
+        } catch {
+            return `${start} - ${end || 'Hiện tại'}`;
+        }
+    };
     const joinDateLabel = (() => {
         const raw = (user as any)?.joinDate;
         if (!raw) return '';
@@ -163,7 +214,7 @@ const Profile: React.FC = () => {
                                     <div className="flex items-center justify-between px-2">
                                         <div className="flex items-center gap-1.5 bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">
                                             <Zap size={10} fill="currentColor" />
-                                            <span className="text-[10px] font-black uppercase">Coming soon</span>
+                                            <span className="text-[10px] font-bold">Coming soon</span>
                                         </div>
                                         <span className="text-[11px] font-bold text-gray-400">--/-- EXP</span>
                                     </div>
@@ -180,7 +231,7 @@ const Profile: React.FC = () => {
                         {/* Detailed Information */}
                         <div className="bg-white rounded-[40px] p-8 shadow-sm border border-gray-100 space-y-8">
                             <div>
-                                <h3 className="text-xs font-bold text-gray-700 uppercase mb-6 flex items-center justify-between">
+                                <h3 className="text-xs font-bold text-gray-700 mb-6 flex items-center justify-between">
                                     Thông tin
                                     <button
                                         type="button"
@@ -244,9 +295,18 @@ const Profile: React.FC = () => {
                             <hr className="border-gray-50" />
 
                             <div>
-                                <h3 className="text-xs font-bold text-gray-700 uppercase mb-6">Kỹ năng</h3>
+                                <h3 className="text-xs font-bold text-gray-700 mb-6 flex items-center justify-between">
+                                    Kỹ năng
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsSkillsOpen(true)}
+                                        className="text-gray-300 cursor-pointer hover:text-amber-500 transition-colors"
+                                    >
+                                        <Edit2 size={14} />
+                                    </button>
+                                </h3>
                                 <div className="space-y-4">
-                                    {user.skills?.map((skill, index) => (
+                                    {(Array.isArray(user.skills) ? user.skills : []).map((skill, index) => (
                                         <div key={index} className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-2 h-2 rounded-full bg-amber-500"></div>
@@ -264,7 +324,7 @@ const Profile: React.FC = () => {
                                             </div>
                                         </div>
                                     ))}
-                                    {!user.skills?.length && <p className="text-sm text-gray-400 text-center italic">Coming soon</p>}
+                                    {(!user.skills || !Array.isArray(user.skills) || user.skills.length === 0) && <p className="text-sm text-gray-400 text-center italic">Chưa cập nhật</p>}
                                 </div>
                             </div>
                         </div>
@@ -272,40 +332,52 @@ const Profile: React.FC = () => {
                         {/* Experience & Education */}
                         <div className="bg-white rounded-[40px] p-8 shadow-sm border border-gray-100 space-y-8">
                             <div>
-                                <h3 className="text-xs font-bold text-gray-700 uppercase mb-6 flex items-center justify-between">
+                                <h3 className="text-xs font-bold text-gray-700 mb-6 flex items-center justify-between">
                                     Kinh nghiệm
-                                    <Plus size={16} className="text-gray-300 cursor-pointer hover:text-amber-500" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsExpOpen(true)}
+                                        className="text-gray-300 cursor-pointer hover:text-amber-500 transition-colors"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
                                 </h3>
                                 <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-3 before:w-px before:bg-gray-100 before:z-0">
-                                    {user.experienceList?.map((exp, index) => (
+                                    {(Array.isArray(user.experienceList) ? user.experienceList : []).map((exp, index) => (
                                         <div key={index} className="relative z-10 pl-10">
                                             <div className="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-white border-2 border-amber-500"></div>
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{exp.period}</p>
-                                            <p className="text-sm font-black text-gray-900">{exp.position}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 leading-none mb-1">{formatDateRange(exp.startDate, exp.endDate)}</p>
+                                            <p className="text-sm font-bold text-gray-900">{exp.position}</p>
                                             <p className="text-xs font-bold text-amber-600">{exp.company}</p>
                                         </div>
                                     ))}
-                                    {!user.experienceList?.length && <p className="text-sm text-gray-400 text-center italic">Coming soon</p>}
+                                    {(!user.experienceList || !Array.isArray(user.experienceList) || user.experienceList.length === 0) && <p className="text-sm text-gray-400 text-center ">Chưa cập nhật</p>}
                                 </div>
                             </div>
 
                             <hr className="border-gray-50" />
 
                             <div>
-                                <h3 className="text-xs font-bold text-gray-700 uppercase mb-6 flex items-center justify-between">
+                                <h3 className="text-xs font-bold text-gray-700 mb-6 flex items-center justify-between">
                                     Học vấn
-                                    <Plus size={16} className="text-gray-300 cursor-pointer hover:text-amber-500" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEduOpen(true)}
+                                        className="text-gray-300 cursor-pointer hover:text-amber-500 transition-colors"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
                                 </h3>
                                 <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-3 before:w-px before:bg-gray-100 before:z-0">
-                                    {user.educationList?.map((edu, index) => (
+                                    {(Array.isArray(user.educationList) ? user.educationList : []).map((edu, index) => (
                                         <div key={index} className="relative z-10 pl-10">
                                             <div className="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-white border-2 border-emerald-500"></div>
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{edu.period}</p>
-                                            <p className="text-sm font-black text-gray-900">{edu.major}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 leading-none mb-1">{formatDateRange(edu.startDate, edu.endDate)}</p>
+                                            <p className="text-sm font-bold text-gray-900">{edu.major}</p>
                                             <p className="text-xs font-bold text-emerald-600">{edu.school}</p>
                                         </div>
                                     ))}
-                                    {!user.educationList?.length && <p className="text-sm text-gray-400 text-center italic">Coming soon</p>}
+                                    {(!user.educationList || !Array.isArray(user.educationList) || user.educationList.length === 0) && <p className="text-sm text-gray-400 text-center">Chưa cập nhật</p>}
                                 </div>
                             </div>
                         </div>
@@ -318,10 +390,10 @@ const Profile: React.FC = () => {
                         <div className="bg-white rounded-[40px] p-3 shadow-sm border border-gray-100 inline-flex gap-2">
                             <button
                                 onClick={() => setActiveTab('learning')}
-                                className={`px-8 py-3.5 rounded-[28px] text-[13px] font-black uppercase transition-all cursor-pointer ${activeTab === 'learning' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'}`}
+                                className={`px-8 py-3.5 rounded-[28px] text-[13px] font-bold transition-all cursor-pointer ${activeTab === 'learning' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'}`}
                             >
                                 <div className="flex items-center gap-2">
-                                    <BookOpen size={18} />
+
                                     <span>Học tập</span>
                                     <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'learning' ? 'bg-white/20' : 'bg-gray-100'}`}>
                                         {enrolledCourses.length}
@@ -330,20 +402,20 @@ const Profile: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => setActiveTab('contests')}
-                                className={`px-8 py-3.5 rounded-[28px] text-[13px] font-black uppercase tracking-widest transition-all cursor-pointer ${activeTab === 'contests' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'}`}
+                                className={`px-8 py-3.5 rounded-[28px] text-[13px] font-bold transition-all cursor-pointer ${activeTab === 'contests' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'}`}
                             >
                                 <div className="flex items-center gap-2">
-                                    <Award size={18} />
+
                                     <span>Cuộc thi</span>
                                     <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'contests' ? 'bg-white/20' : 'bg-gray-100'}`}>0</span>
                                 </div>
                             </button>
                             <button
                                 onClick={() => setActiveTab('discussions')}
-                                className={`px-8 py-3.5 rounded-[28px] text-[13px] font-black uppercase tracking-widest transition-all cursor-pointer ${activeTab === 'discussions' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'}`}
+                                className={`px-8 py-3.5 rounded-[28px] text-[13px] font-bold transition-all cursor-pointer ${activeTab === 'discussions' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'}`}
                             >
                                 <div className="flex items-center gap-2">
-                                    <MessageSquare size={18} />
+
                                     <span>Thảo luận</span>
                                 </div>
                             </button>
@@ -374,14 +446,17 @@ const Profile: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="p-6">
-                                            <h4 className="font-black text-gray-900 line-clamp-2 mb-4 group-hover:text-amber-600 transition-colors uppercase text-sm tracking-tight leading-tight min-h-[40px]">{course.title}</h4>
+                                            <h4 className="font-bold text-gray-900 line-clamp-2 mb-4 group-hover:text-amber-600 transition-colors text-sm tracking-tight leading-tight min-h-[40px]">{course.title}</h4>
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-1.5">
                                                     <Star size={14} fill="currentColor" className="text-amber-500" />
-                                                    <span className="text-xs font-bold text-gray-400">--</span>
+                                                    <span className="text-xs font-bold text-gray-400">
+                                                        {course.rating ? Number(course.rating).toFixed(1) : '0.0'}
+                                                        {course.reviewCount ? ` (${course.reviewCount})` : ''}
+                                                    </span>
                                                 </div>
-                                                <div className="text-[11px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
-                                                    {Math.min(100, Math.max(0, Number(enrollment.progressPercent ?? 0)))}% ĐÃ HỌC
+                                                <div className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                                                    {Math.min(100, Math.max(0, Number(enrollment.progressPercent ?? 0)))}% Đã học
                                                 </div>
                                             </div>
                                         </div>
@@ -395,7 +470,7 @@ const Profile: React.FC = () => {
                                         <p className="text-gray-500 font-bold">Bạn chưa tham gia khóa học nào</p>
                                         <button
                                             onClick={() => navigate('/courses')}
-                                            className="mt-6 text-amber-600 font-black uppercase text-xs tracking-widest hover:underline"
+                                            className="mt-6 text-amber-600 font-bold text-sm hover:underline"
                                         >
                                             Khám phá ngay →
                                         </button>
@@ -409,36 +484,44 @@ const Profile: React.FC = () => {
                                 <div className="w-24 h-24 bg-amber-50 rounded-[32px] flex items-center justify-center mx-auto mb-8">
                                     <Award size={48} className="text-amber-500" />
                                 </div>
-                                <h3 className="text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Coming soon</h3>
-                                <p className="text-gray-400 font-bold max-w-sm mx-auto mb-8">Tính năng này sẽ được cập nhật sau.</p>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Coming soon</h3>
+                                <p className="text-gray-400 font-medium text-sm max-w-sm mx-auto mb-8">Tính năng này sẽ được cập nhật sau.</p>
                             </div>
                         )}
 
                         {/* Practice Section - High Score Summary */}
                         <div className="bg-white rounded-[40px] p-10 shadow-sm border border-gray-100 space-y-10">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-xs font-black text-gray-400 uppercase">Luyện tập & Phân tích</h3>
-                                <button className="flex items-center gap-2 text-amber-600 font-black text-[11px] uppercase tracking-widest hover:underline cursor-pointer">
+                                <h3 className="text-xs font-bold text-gray-400">Luyện tập & Phân tích</h3>
+                                <button className="flex items-center gap-2 text-amber-600 font-bold text-[11px] hover:underline cursor-pointer">
                                     Thống kê chi tiết <ChevronRight size={14} />
                                 </button>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-50 text-center group hover:bg-blue-50 transition-all">
-                                    <p className="text-3xl font-black text-blue-600 mb-1 group-hover:scale-110 transition-transform">--</p>
-                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Tổng điểm</p>
+                                    <p className="text-3xl font-bold text-blue-600 mb-1 group-hover:scale-110 transition-transform">
+                                        {performanceStats?.statistics.totalScore || 0}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-blue-400">Tổng điểm</p>
                                 </div>
                                 <div className="bg-emerald-50/50 p-6 rounded-[32px] border border-emerald-50 text-center group hover:bg-emerald-50 transition-all">
-                                    <p className="text-3xl font-black text-emerald-600 mb-1 group-hover:scale-110 transition-transform">--</p>
-                                    <div className="inline-flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Coming soon</div>
+                                    <p className="text-3xl font-bold text-emerald-600 mb-1 group-hover:scale-110 transition-transform">
+                                        {performanceStats?.statistics.passRate || 0}%
+                                    </p>
+                                    <p className="text-[10px] font-bold text-emerald-400">Tỉ lệ đạt</p>
                                 </div>
                                 <div className="bg-amber-50/50 p-6 rounded-[32px] border border-amber-50 text-center group hover:bg-amber-50 transition-all">
-                                    <p className="text-3xl font-black text-amber-600 mb-1 group-hover:scale-110 transition-transform">--</p>
-                                    <div className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Coming soon</div>
+                                    <p className="text-3xl font-bold text-amber-600 mb-1 group-hover:scale-110 transition-transform">
+                                        {performanceStats?.statistics.averagePercentage || 0}%
+                                    </p>
+                                    <p className="text-[10px] font-bold text-amber-400">Điểm trung bình</p>
                                 </div>
                                 <div className="bg-rose-50/50 p-6 rounded-[32px] border border-rose-50 text-center group hover:bg-rose-50 transition-all">
-                                    <p className="text-3xl font-black text-rose-600 mb-1 group-hover:scale-110 transition-transform">--</p>
-                                    <div className="inline-flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Coming soon</div>
+                                    <p className="text-3xl font-bold text-rose-600 mb-1 group-hover:scale-110 transition-transform">
+                                        {performanceStats?.statistics.totalAttempts || 0}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-rose-400">Lần thực hiện</p>
                                 </div>
                             </div>
 
@@ -447,18 +530,53 @@ const Profile: React.FC = () => {
                                 <table className="w-full text-left border-collapse">
                                     <thead className="bg-gray-50/50">
                                         <tr>
-                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Tên bài tập</th>
-                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Độ khó</th>
-                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Ngôn ngữ</th>
-                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Điểm số</th>
+                                            <th className="px-6 py-4 text-[10px] font-bold text-gray-400">Tên bài tập</th>
+                                            <th className="px-6 py-4 text-[10px] font-bold text-gray-400">Độ khó</th>
+                                            <th className="px-6 py-4 text-[10px] font-bold text-gray-400">Ngôn ngữ</th>
+                                            <th className="px-6 py-4 text-[10px] font-bold text-gray-400 text-right">Điểm số</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
-                                        <tr>
-                                            <td colSpan={4} className="px-6 py-10 text-center">
-                                                <span className="text-sm font-bold text-gray-400 italic">Coming soon</span>
-                                            </td>
-                                        </tr>
+                                        {loadingStats ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-10 text-center">
+                                                    <span className="text-sm font-bold text-gray-400 italic">Đang tải dữ liệu...</span>
+                                                </td>
+                                            </tr>
+                                        ) : performanceStats?.recentAttempts.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-10 text-center">
+                                                    <span className="text-sm font-bold text-gray-400">Chưa có bài tập nào hoàn thành</span>
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            performanceStats?.recentAttempts.map((att) => (
+                                                <tr key={att.id} className="hover:bg-gray-50/50 transition-all">
+                                                    <td className="px-6 py-4">
+                                                        <p className="text-sm font-bold text-gray-700">{att.quizTitle}</p>
+                                                        <p className="text-[10px] font-medium text-gray-400 truncate max-w-[200px]">{att.courseTitle}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-bold uppercase rounded-lg text-slate-500">Trung bình</span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-[10px] font-bold uppercase text-amber-600 bg-amber-50 px-2 py-1 rounded-lg italic">
+                                                            {att.language}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="inline-flex flex-col items-end">
+                                                            <span className={`text-sm font-bold ${att.passed ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                {att.score}/{att.maxScore}
+                                                            </span>
+                                                            <span className="text-[10px] font-bold text-gray-300">
+                                                                {new Date(att.completedAt).toLocaleDateString('vi-VN')}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -475,9 +593,11 @@ const Profile: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => setIsEditOpen(false)}
+                                aria-label='Đóng'
+                                title='Đóng'
                                 className="p-2 rounded-xl text-gray-400 cursor-pointer hover:text-gray-700 hover:bg-gray-50 transition-all"
                             >
-                                ✕
+                                <X size={20} />
                             </button>
                         </div>
 
@@ -501,11 +621,11 @@ const Profile: React.FC = () => {
                                         <Edit2 size={12} />
                                     </div>
                                 </div>
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Xem trước ảnh đại diện</p>
+                                <p className="text-xs font-medium text-gray-400 mt-4">Xem trước ảnh đại diện</p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <label className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all ${uploadingAvatar ? 'bg-amber-100 text-amber-700' : 'bg-gray-900 text-white hover:bg-amber-600'}`}>
+                                <label className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-xs cursor-pointer transition-all ${uploadingAvatar ? 'bg-amber-100 text-amber-700' : 'bg-gray-900 text-white hover:bg-amber-600'}`}>
                                     {uploadingAvatar ? 'Đang upload...' : 'Chọn ảnh từ máy'}
                                     <input
                                         type="file"
@@ -554,7 +674,7 @@ const Profile: React.FC = () => {
                                         }
                                     }}
                                     aria-label="Xóa avatar"
-                                    className="cursor-pointer w-full px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-gray-50 text-gray-600 hover:bg-gray-100 transition-all"
+                                    className="cursor-pointer w-full px-4 py-3 rounded-2xl font-bold text-xs bg-gray-50 text-gray-600 hover:bg-gray-100 transition-all"
                                 >
                                     Xóa avatar
                                 </button>
@@ -582,13 +702,17 @@ const Profile: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsEditOpen(false)}
-                                    className="px-6 py-3 cursor-pointer rounded-2xl font-black text-xs uppercase tracking-widest text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-all"
+                                    aria-label='Hủy'
+                                    title='Hủy'
+                                    className="px-6 py-3 cursor-pointer rounded-2xl font-bold text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-all"
                                 >
                                     Hủy
                                 </button>
                                 <button
                                     type="button"
                                     disabled={savingProfile}
+                                    aria-label='Lưu thay đổi'
+                                    title='Lưu thay đổi'
                                     onClick={async () => {
                                         if (!user) return;
                                         try {
@@ -607,7 +731,7 @@ const Profile: React.FC = () => {
                                             setSavingProfile(false);
                                         }
                                     }}
-                                    className="px-6 py-3 rounded-2xl cursor-pointer font-black text-xs uppercase tracking-widest bg-gray-900 text-white hover:bg-amber-600 transition-all disabled:opacity-60"
+                                    className="px-6 py-3 rounded-2xl cursor-pointer font-bold text-xs bg-gray-900 text-white hover:bg-amber-600 transition-all disabled:opacity-60"
                                 >
                                     {savingProfile ? 'Đang lưu...' : 'Lưu'}
                                 </button>
@@ -618,6 +742,293 @@ const Profile: React.FC = () => {
                                     {editError}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* SKILLS MODAL */}
+            {isSkillsOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                    <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase">Quản lý kỹ năng</h3>
+                            <button onClick={() => setIsSkillsOpen(false)}
+                                aria-label='Đóng'
+                                title='Đóng'
+                                className="p-2 rounded-xl text-gray-400 cursor-pointer hover:bg-gray-50"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                            {tempSkills.map((s, idx) => (
+                                <div key={idx} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl">
+                                    <div className="flex-1">
+                                        <input
+                                            className="w-full bg-transparent font-bold text-gray-700 outline-none"
+                                            value={s.name}
+                                            onChange={(e) => {
+                                                const newSkills = [...tempSkills];
+                                                newSkills[idx].name = e.target.value;
+                                                setTempSkills(newSkills);
+                                            }}
+                                            placeholder="Tên kỹ năng"
+                                        />
+                                        <div className="flex gap-1 mt-2">
+                                            {[1, 2, 3, 4, 5].map((level) => (
+                                                <button
+                                                    key={level}
+                                                    onClick={() => {
+                                                        const newSkills = [...tempSkills];
+                                                        newSkills[idx].level = level;
+                                                        setTempSkills(newSkills);
+                                                    }}
+                                                    aria-label='Chọn cấp độ'
+                                                    className={`hover:scale-110 transition-transform ${s.level >= level ? 'text-amber-500' : 'text-gray-300'}`}
+                                                >
+                                                    <Star size={16} fill={s.level >= level ? "currentColor" : "none"} />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setTempSkills(tempSkills.filter((_, i) => i !== idx))}
+                                        aria-label='Xóa kỹ năng'
+                                        title='Xóa kỹ năng'
+                                        className="text-gray-300 cursor-pointer hover:text-rose-500 transition-colors"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => setTempSkills([...tempSkills, { name: '', level: 3 }])}
+                                aria-label='Thêm kỹ năng mới'
+                                title='Thêm kỹ năng mới'
+                                className="w-full py-4 cursor-pointer border-2 border-dashed border-gray-100 rounded-2xl text-gray-400 font-bold text-xs hover:border-amber-500 hover:text-amber-500 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} /> Thêm kỹ năng mới
+                            </button>
+                        </div>
+                        <div className="p-6 border-t border-gray-50 flex justify-end gap-3">
+                            <button onClick={() => setIsSkillsOpen(false)}
+                                aria-label='Hủy'
+                                title='Hủy'
+                                className="px-6 py-3 cursor-pointer font-bold text-xs text-gray-500">Hủy</button>
+                            <button
+                                onClick={() => handleUpdateDetails({ skills: tempSkills })}
+                                disabled={savingDetails}
+                                aria-label='Lưu thay đổi'
+                                title='Lưu thay đổi'
+                                className="px-8 py-3 cursor-pointer bg-gray-900 text-white rounded-2xl font-bold text-xs hover:bg-amber-600 transition-all disabled:opacity-50"
+                            >
+                                {savingDetails ? 'Đang lưu...' : 'Lưu thay đổi'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* EXPERIENCE MODAL */}
+            {isExpOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                    <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase">Kinh nghiệm làm việc</h3>
+                            <button onClick={() => setIsExpOpen(false)}
+                                aria-label='Đóng'
+                                title='Đóng'
+                                className="p-2 rounded-xl text-gray-400 hover:bg-gray-50"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
+                            {tempExps.map((exp, idx) => (
+                                <div key={idx} className="space-y-3 p-4 bg-gray-50 rounded-2xl relative">
+                                    <button
+                                        onClick={() => setTempExps(tempExps.filter((_, i) => i !== idx))}
+                                        aria-label='Xóa kinh nghiệm'
+                                        title='Xóa kinh nghiệm'
+                                        className="absolute cursor-pointer top-4 right-4 text-gray-300 hover:text-rose-500"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Từ ngày</label>
+                                            <input
+                                                type="date"
+                                                className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500"
+                                                value={exp.startDate}
+                                                onChange={(e) => {
+                                                    const next = [...tempExps];
+                                                    next[idx].startDate = e.target.value;
+                                                    setTempExps(next);
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Đến ngày</label>
+                                            <input
+                                                type="date"
+                                                className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500 disabled:bg-gray-100 placeholder:italic"
+                                                value={exp.endDate || ''}
+                                                onChange={(e) => {
+                                                    const next = [...tempExps];
+                                                    next[idx].endDate = e.target.value;
+                                                    setTempExps(next);
+                                                }}
+                                                placeholder="Để trống nếu đang làm"
+                                            />
+                                            <p className="text-[9px] text-gray-400 mt-1 ml-1 font-medium italic">* Để trống nếu "Hiện tại"</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Vị trí</label>
+                                        <input
+                                            className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500"
+                                            value={exp.position}
+                                            onChange={(e) => {
+                                                const next = [...tempExps];
+                                                next[idx].position = e.target.value;
+                                                setTempExps(next);
+                                            }}
+                                            placeholder="VD: Senior Developer"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Công ty</label>
+                                        <input
+                                            className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500"
+                                            value={exp.company}
+                                            onChange={(e) => {
+                                                const next = [...tempExps];
+                                                next[idx].company = e.target.value;
+                                                setTempExps(next);
+                                            }}
+                                            placeholder="VD: Google"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => setTempExps([...tempExps, { startDate: '', endDate: '', position: '', company: '' }])}
+                                aria-label='Thêm kinh nghiệm'
+                                title='Thêm kinh nghiệm'
+                                className="w-full py-4 cursor-pointer border-2 border-dashed border-gray-100 rounded-2xl text-gray-400 font-bold text-xs hover:border-amber-500 hover:text-amber-500 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} /> Thêm kinh nghiệm
+                            </button>
+                        </div>
+                        <div className="p-6 border-t border-gray-50 flex justify-end gap-3">
+                            <button onClick={() => setIsExpOpen(false)} className="px-6 py-3 font-bold text-xs text-gray-500">Hủy</button>
+                            <button
+                                onClick={() => handleUpdateDetails({ experienceList: tempExps })}
+                                disabled={savingDetails}
+                                aria-label='Lưu thay đổi'
+                                title='Lưu thay đổi'
+                                className="px-8 py-3 cursor-pointer bg-gray-900 text-white rounded-2xl font-bold text-xs hover:bg-amber-600 transition-all disabled:opacity-50"
+                            >
+                                {savingDetails ? 'Đang lưu...' : 'Lưu thay đổi'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* EDUCATION MODAL */}
+            {isEduOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                    <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase">Học vấn & Bằng cấp</h3>
+                            <button onClick={() => setIsEduOpen(false)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-50"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
+                            {tempEdus.map((edu, idx) => (
+                                <div key={idx} className="space-y-3 p-4 bg-gray-50 rounded-2xl relative">
+                                    <button
+                                        onClick={() => setTempEdus(tempEdus.filter((_, i) => i !== idx))}
+                                        aria-label='Xóa học vấn'
+                                        title='Xóa học vấn'
+                                        className="absolute cursor-pointer top-4 right-4 text-gray-300 hover:text-rose-500"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Từ ngày</label>
+                                            <input
+                                                type="date"
+                                                className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500"
+                                                value={edu.startDate}
+                                                onChange={(e) => {
+                                                    const next = [...tempEdus];
+                                                    next[idx].startDate = e.target.value;
+                                                    setTempEdus(next);
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Đến ngày</label>
+                                            <input
+                                                type="date"
+                                                className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500 placeholder:italic"
+                                                value={edu.endDate || ''}
+                                                onChange={(e) => {
+                                                    const next = [...tempEdus];
+                                                    next[idx].endDate = e.target.value;
+                                                    setTempEdus(next);
+                                                }}
+                                                placeholder="Để trống nếu đang học"
+                                            />
+                                            <p className="text-[9px] text-gray-400 mt-1 ml-1 font-medium italic">* Để trống nếu "Hiện tại"</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Chuyên ngành</label>
+                                        <input
+                                            className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500"
+                                            value={edu.major}
+                                            onChange={(e) => {
+                                                const next = [...tempEdus];
+                                                next[idx].major = e.target.value;
+                                                setTempEdus(next);
+                                            }}
+                                            placeholder="VD: Computer Science"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Trường học</label>
+                                        <input
+                                            className="w-full bg-white px-4 py-2 rounded-xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-amber-500"
+                                            value={edu.school}
+                                            onChange={(e) => {
+                                                const next = [...tempEdus];
+                                                next[idx].school = e.target.value;
+                                                setTempEdus(next);
+                                            }}
+                                            placeholder="VD: Harvard University"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => setTempEdus([...tempEdus, { startDate: '', endDate: '', major: '', school: '' }])}
+                                aria-label='Thêm thông tin học vấn'
+                                title='Thêm thông tin học vấn'
+                                className="w-full py-4 cursor-pointer border-2 border-dashed border-gray-100 rounded-2xl text-gray-400 font-bold text-xs hover:border-amber-500 hover:text-amber-500 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} /> Thêm thông tin học vấn
+                            </button>
+                        </div>
+                        <div className="p-6 border-t border-gray-50 flex justify-end gap-3">
+                            <button onClick={() => setIsEduOpen(false)} className="px-6 py-3 cursor-pointer font-bold text-xs text-gray-500">Hủy</button>
+                            <button
+                                onClick={() => handleUpdateDetails({ educationList: tempEdus })}
+                                disabled={savingDetails}
+                                aria-label='Lưu thay đổi'
+                                title='Lưu thay đổi'
+                                className="px-8 py-3 cursor-pointer bg-gray-900 text-white rounded-2xl font-bold text-xs hover:bg-amber-600 transition-all disabled:opacity-50"
+                            >
+                                {savingDetails ? 'Đang lưu...' : 'Lưu thay đổi'}
+                            </button>
                         </div>
                     </div>
                 </div>

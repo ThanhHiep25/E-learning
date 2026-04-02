@@ -6,13 +6,15 @@ export interface Skill {
 }
 
 export interface Experience {
-  period: string;
+  startDate: string;
+  endDate?: string;
   company: string;
   position: string;
 }
 
 export interface Education {
-  period: string;
+  startDate: string;
+  endDate?: string;
   school: string;
   major: string;
 }
@@ -40,6 +42,8 @@ export interface User {
   teachingCourses?: string[]; // IDs
   expertise?: string[];
   rating?: number;
+  chatBannedUntil?: string | null;
+  chatBanReason?: string | null;
 }
 
 export const mockUsers: User[] = [
@@ -66,14 +70,16 @@ export const mockUsers: User[] = [
     ],
     experienceList: [
       {
-        period: "2023 - Present",
+        startDate: "2023-01-01",
+        endDate: "",
         company: "FPT Software",
         position: "Fullstack Developer Intern",
       },
     ],
     educationList: [
       {
-        period: "01/01/2023 - Present",
+        startDate: "2023-01-01",
+        endDate: "",
         school: "Đại học Công nghiệp HCM",
         major: "Kỹ thuật phần mềm",
       },

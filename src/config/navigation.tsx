@@ -20,6 +20,7 @@ export interface NavItem {
     icon: LucideIcon;
     hasSubmenu?: boolean;
     submenuItems?: SubmenuItem[];
+    roles?: ('STUDENT' | 'TEACHER' | 'ADMIN')[];
 }
 
 export const navigationConfig: NavItem[] = [
@@ -39,6 +40,7 @@ export const navigationConfig: NavItem[] = [
         label: 'Bài kiểm tra',
         path: '/bai-kiem-tra',
         icon: ClipboardList,
+        roles: ['STUDENT'],
     },
 
     {

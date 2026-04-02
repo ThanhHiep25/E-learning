@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
-const VirtualBot: React.FC = () => {
+interface VirtualBotProps {
+    onChatToggle?: () => void;
+}
+
+const VirtualBot: React.FC<VirtualBotProps> = ({ onChatToggle }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [showBubble, setShowBubble] = useState(false);
     const [isAutoShowDisabled, setIsAutoShowDisabled] = useState(false);
@@ -53,6 +57,7 @@ const VirtualBot: React.FC = () => {
         setShowBubble(!showBubble);
         // If user manually interacts, we stop the auto-rotation/auto-show to respect their control
         setIsAutoShowDisabled(true);
+        if (onChatToggle) onChatToggle();
     };
 
     if (!isVisible) return null;
