@@ -95,7 +95,7 @@ const ForumSection: React.FC<ForumSectionProps> = ({ courseId, lectureId, type }
                             className="p-5 rounded-[28px] border border-gray-50 hover:border-amber-100 hover:bg-amber-50/30 transition-all cursor-pointer group"
                         >
                             <div className="flex items-center gap-2 mb-3">
-                                <img src={topic.author?.avatar || "https://i.pravatar.cc/150"} className="w-6 h-6 rounded-lg object-cover" alt="" />
+                                <img src={topic.author?.avatar || '/default-avatar.png'} className="w-6 h-6 rounded-lg object-cover" alt="" />
                                 <span className="text-[10px] font-bold text-slate-700">{topic.author?.name || 'Vô danh'}</span>
                                 <span className="text-gray-300 ml-auto">•</span>
                                 <span className="text-[9px] font-bold text-gray-400 uppercase">{safeFormatDistanceToNow(topic.createdAt)}</span>

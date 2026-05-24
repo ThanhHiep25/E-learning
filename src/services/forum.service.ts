@@ -60,6 +60,21 @@ export interface ForumTopicListResponse {
   };
 }
 
+export interface ForumStats {
+  totalTopics: number;
+  totalPosts: number;
+  totalUsers: number;
+  todayPosts: number;
+}
+
+export interface TopContributor {
+  id: number;
+  name: string;
+  avatar: string | null;
+  role: string;
+  points: number;
+}
+
 export interface ForumReport {
   id: number;
   topicId: number | null;
@@ -215,5 +230,13 @@ export const forumService = {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  },
+
+  async getForumStats(): Promise<ForumStats> {
+    return apiRequest<ForumStats>('forum/stats');
+  },
+
+  async getTopContributors(limit: number = 5): Promise<TopContributor[]> {
+    return apiRequest<TopContributor[]>(`forum/top-contributors?limit=${limit}`);
   },
 };

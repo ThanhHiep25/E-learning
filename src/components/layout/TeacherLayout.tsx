@@ -10,7 +10,11 @@ import {
     Menu,
     X,
     ChevronLeft,
-    CalendarDays
+    MessageSquare,
+    Trophy,
+    User,
+    ChevronDown,
+    Shield
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -19,6 +23,7 @@ const TeacherLayout: React.FC = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
 
     useEffect(() => {
         if (!user) {
@@ -27,12 +32,13 @@ const TeacherLayout: React.FC = () => {
     }, [user, navigate]);
 
     const menuItems = [
-        { label: 'Thống kê chính', path: '/teacher/dashboard', icon: LayoutDashboard },
+        { label: 'Dashboard', path: '/teacher/dashboard', icon: LayoutDashboard },
         { label: 'Thống kê chi tiết', path: '/teacher/statistics', icon: BarChart3 },
         { label: 'Quản lý Khóa học', path: '/teacher/courses', icon: BookOpen },
-        { label: 'Lên lịch dạy', path: '/teacher/schedule', icon: CalendarDays },
         { label: 'Quản lý Học viên', path: '/teacher/students', icon: Users },
         { label: 'Đề thi & Kiểm tra', path: '/teacher/quizzes', icon: FileText },
+        { label: 'Kiểm tra cuối trình độ', path: '/teacher/final-quizzes', icon: Trophy },
+        { label: 'Quản lý Chat', path: '/teacher/chats', icon: MessageSquare },
     ];
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -65,9 +71,9 @@ const TeacherLayout: React.FC = () => {
                 <div className="mb-12">
                     <span className="text-[10px] font-black text-amber-500 uppercase tracking-[0.4em] mb-4 block">Teacher Portal</span>
                     <h2 className="text-3xl font-black text-white italic tracking-tighter leading-none">
-                        LMS Control<span className="text-amber-500">.</span>
+                        Hệ Thống Quản Lý<span className="text-amber-500">.</span>
                     </h2>
-                </div>
+                </div>  
 
                 <nav className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2">
                     {menuItems.map((item) => (
@@ -89,25 +95,7 @@ const TeacherLayout: React.FC = () => {
                     ))}
                 </nav>
 
-                <div className="mt-auto space-y-6 pt-10 border-t border-white/5">
-                    <div className="flex items-center gap-4 px-4">
-                        <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-black text-white truncate">{user?.fullName || 'Teacher'}</h4>
-                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{user?.role}</p>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={() => {
-                            logout();
-                            navigate('/');
-                        }}
-                        className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all text-red-400 hover:bg-red-500/10"
-                    >
-                        <LogOut size={18} />
-                        Đăng xuất
-                    </button>
-
+                <div className="mt-auto pt-10 border-t border-white/5">
                     <NavLink
                         to="/"
                         className="text-[10px] border border-gray-600 p-2 rounded-md font-black text-slate-500 uppercase tracking-widest hover:text-white text-center flex items-center justify-center gap-2 transition-colors"
@@ -134,7 +122,70 @@ const TeacherLayout: React.FC = () => {
 
                     <div className="flex items-center gap-4">
                         <NotificationBell />
-                        
+
+                        {/* Profile Dropdown */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-100 transition-all"
+                            >
+                                <div className="w-8 h-8 bg-slate-900 rounded-full flex items-center justify-center text-white">
+                                    <User size={16} />
+                                </div>
+                                <span className="hidden md:block text-sm font-medium text-gray-700">{user?.fullName || 'Giảng viên'}</span>
+                                <ChevronDown size={16} className={`text-gray-500 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isProfileOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 py-3 z-50">
+                                    {/* User Info Header */}
+                                    <div className="px-4 pb-3 border-b border-gray-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 rounded-full flex items-center justify-center text-white">
+                                                <User size={20} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-bold text-gray-900 truncate">{user?.fullName || 'Giảng viên'}</p>
+                                                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                                                <span className="inline-flex items-center px-2 py-0.5 mt-1 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
+                                                    <Shield size={10} className="mr-1" />
+                                                    GIẢNG VIÊN
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Menu Items */}
+                                    <div className="px-2 py-2 space-y-1">
+                                        <button
+                                            onClick={() => {
+                                                navigate('/profile');
+                                                setIsProfileOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg flex items-center gap-3 transition-colors"
+                                        >
+                                            <User size={16} className="text-gray-400" />
+                                            Trang cá nhân
+                                        </button>
+                                    </div>
+
+                                    {/* Logout */}
+                                    <div className="px-2 pt-2 border-t border-gray-100 mt-1">
+                                        <button
+                                            onClick={() => {
+                                                logout();
+                                                navigate('/');
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition-colors"
+                                        >
+                                            <LogOut size={16} />
+                                            Đăng xuất
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <button
                             onClick={toggleSidebar}
                             className="p-2.5 text-gray-900 hover:bg-gray-100 rounded-2xl transition-all active:scale-95 lg:hidden"

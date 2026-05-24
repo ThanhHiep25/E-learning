@@ -14,7 +14,10 @@ import {
     FileText,
     Trophy,
     Trash2,
-    AlertTriangle
+    AlertTriangle,
+    X,
+    Edit3,
+    Save
 } from 'lucide-react';
 import { teacherService, type QuizAttemptsResponse } from '../../services/teacher.service';
 import toast from 'react-hot-toast';
@@ -35,6 +38,13 @@ const QuizAttempts: React.FC = () => {
     const [selectedViolationLogs, setSelectedViolationLogs] = useState<{ type: string; time: string; message: string }[] | null>(null);
     const [selectedStudentName, setSelectedStudentName] = useState<string>('');
 
+    // Grading Modal State
+    const [gradingModalOpen, setGradingModalOpen] = useState(false);
+    const [gradingAttempt, setGradingAttempt] = useState<any>(null);
+    const [gradingQuestions, setGradingQuestions] = useState<any[]>([]);
+    const [gradingData, setGradingData] = useState<Record<string, { points: number; feedback: string }>>({});
+    const [isSubmittingGrade, setIsSubmittingGrade] = useState(false);
+
     const loadData = useCallback(async () => {
         if (!id) return;
         try {
@@ -48,13 +58,40 @@ const QuizAttempts: React.FC = () => {
             // Tìm thông tin quiz từ bản ghi đầu tiên nếu không có ở ngoài
             const firstAttemptQuiz = quizData.attempts?.[0]?.quiz;
 
+            // Calculate actualMaxScore from attempts if res.quiz not available
+            // Formula: maxScore = score / (percentageScore / 100)
+            const calculateMaxScoreFromAttempt = (attempt: any) => {
+                const score = Number(attempt?.score) || 0;
+                const percentage = Number(attempt?.percentageScore) || 0;
+                if (score > 0 && percentage > 0) {
+                    return Math.round(score / (percentage / 100));
+                }
+                return null;
+            };
+            
+            // Find first attempt that can be used to calculate maxScore
+            const firstAttempt = quizData.attempts?.[0];
+            const validAttempt = quizData.attempts?.find((a: any) => 
+                Number(a.score) > 0 && Number(a.percentageScore) > 0
+            );
+            const calculatedMaxScore = calculateMaxScoreFromAttempt(validAttempt || firstAttempt);
+
+            // Get actualMaxScore from API response or calculate from attempts
+            const actualMaxScore = res.quiz?.maxScore || quizData.maxScore || calculatedMaxScore || firstAttemptQuiz?.maxScore || 100;
+            
+            // Override maxScore in each attempt's quiz data
+            const attemptsWithCorrectMaxScore = (quizData.attempts || []).map((a: any) => ({
+                ...a,
+                quiz: a.quiz ? { ...a.quiz, maxScore: actualMaxScore } : undefined
+            }));
+            
             const safeData: QuizAttemptsResponse = {
                 quiz: {
                     id: quizData.id || firstAttemptQuiz?.id || id,
                     title: quizData.title || firstAttemptQuiz?.title || 'Đề thi không tên',
-                    maxScore: quizData.maxScore || firstAttemptQuiz?.maxScore || 100,
+                    maxScore: actualMaxScore || firstAttemptQuiz?.maxScore || 100,
                     passingScore: quizData.passingScore || firstAttemptQuiz?.passingScore || 0,
-                    attempts: quizData.attempts || []
+                    attempts: attemptsWithCorrectMaxScore
                 },
                 statistics: res.statistics,
                 ranking: res.ranking,
@@ -81,7 +118,13 @@ const QuizAttempts: React.FC = () => {
             const term = (searchTerm || '').toLowerCase();
             const matchesSearch = name.includes(term) || email.includes(term);
 
-            const isPassed = a.passed || a.isPassed;
+            // Calculate percentage-based pass/fail
+            const score = Number(a.score) || 0;
+            const maxScore = a.quiz?.maxScore || data?.quiz?.maxScore || 100;
+            const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
+            const passingScore = a.quiz?.passingScore || data?.quiz?.passingScore || 50;
+            const isPassed = percentage >= passingScore;
+
             const matchesStatus = statusFilter === 'all' ||
                 (statusFilter === 'passed' && isPassed) ||
                 (statusFilter === 'failed' && !isPassed);
@@ -115,20 +158,25 @@ const QuizAttempts: React.FC = () => {
         atts.forEach(a => {
             const user = a.User || (a as any).user;
             const userId = a.userId || user?.id;
+            
+            // Calculate percentage for fair comparison across different quiz sizes
             const score = Number(a.score) || 0;
-            const isPassed = a.passed || a.isPassed || false;
+            const maxScore = a.quiz?.maxScore || data.quiz?.maxScore || 100;
+            const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
+            const passingScore = a.quiz?.passingScore || data.quiz?.passingScore || 50;
+            const isPassed = percentage >= passingScore;
 
-            if (!userMap.has(userId) || score > userMap.get(userId).highestScore) {
+            if (!userMap.has(userId) || percentage > userMap.get(userId).highestScore) {
                 userMap.set(userId, {
                     userName: user?.name || user?.username || 'Học viên ẩn danh',
-                    highestScore: score,
+                    highestScore: percentage, // Store percentage for ranking
                     passed: isPassed,
                     completedAt: a.completedAt || a.startedAt
                 });
             }
         });
 
-        // Convert map to array and assign base rank by score desc
+        // Convert map to array and assign base rank by percentage desc
         let ranking = Array.from(userMap.values())
             .sort((a, b) => b.highestScore - a.highestScore)
             .map((item, index) => ({
@@ -230,6 +278,54 @@ const QuizAttempts: React.FC = () => {
     const confirmDelete = (attemptId: string | number) => {
         setAttemptToDelete(attemptId);
         setShowDeleteModal(true);
+    };
+
+    const openGradingModal = async (attemptId: string | number) => {
+        try {
+            const attempt = await teacherService.getAttemptForGrading(attemptId);
+            setGradingAttempt(attempt);
+            setGradingQuestions(attempt.questions || []);
+            
+            // Initialize grading data for essay questions
+            const initialGradingData: Record<string, { points: number; feedback: string }> = {};
+            (attempt.questions || []).forEach((q: any) => {
+                if (q.type === 'essay') {
+                    initialGradingData[String(q.id)] = {
+                        points: q.pointsEarned || 0,
+                        feedback: q.feedback || ''
+                    };
+                }
+            });
+            setGradingData(initialGradingData);
+            setGradingModalOpen(true);
+        } catch (err: any) {
+            toast.error(err?.message || 'Không thể tải dữ liệu chấm điểm');
+        }
+    };
+
+    const submitGrades = async () => {
+        if (!gradingAttempt) return;
+        try {
+            setIsSubmittingGrade(true);
+            
+            // Submit grades for each essay question
+            for (const [questionId, data] of Object.entries(gradingData)) {
+                await teacherService.gradeQuestion(
+                    gradingAttempt.id,
+                    questionId,
+                    data.points,
+                    data.feedback
+                );
+            }
+            
+            toast.success('Đã lưu điểm thành công');
+            setGradingModalOpen(false);
+            loadData();
+        } catch (err: any) {
+            toast.error(err?.message || 'Không thể lưu điểm');
+        } finally {
+            setIsSubmittingGrade(false);
+        }
     };
 
     return (
@@ -407,7 +503,7 @@ const QuizAttempts: React.FC = () => {
                                                     <div className="flex items-center gap-4">
                                                         <div className="w-12 h-12 rounded-full bg-amber-100/70 flex items-center justify-center font-bold text-amber-700 text-lg">
                                                             <img
-                                                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user?.name || user?.username || 'U')}`}
+                                                                src={user?.avatar || '/default-avatar.png'}
                                                                 alt={user?.name || user?.username || 'Avatar'}
                                                                 className="w-10 h-10 rounded-full object-cover shadow-sm"
                                                             />
@@ -431,9 +527,21 @@ const QuizAttempts: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <div className="text-lg font-black text-gray-900 group-hover:text-amber-600 transition-colors">
-                                                        {a.score}<span className="text-xs text-gray-400">/{data.quiz?.maxScore || 100}</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const score = Number(a.score) || 0;
+                                                        const maxScore = a.quiz?.maxScore || data.quiz?.maxScore || 100;
+                                                        const percentage = Math.round((score / maxScore) * 100);
+                                                        return (
+                                                            <div className="flex flex-col">
+                                                                <div className="text-lg font-black text-gray-900 group-hover:text-amber-600 transition-colors">
+                                                                    {score}<span className="text-xs text-gray-400">/{maxScore}</span>
+                                                                </div>
+                                                                <div className={`text-xs font-bold ${percentage >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                    {percentage}%
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className={`flex items-center gap-2 font-bold ${a.isCheated || (a as any).is_cheated ? 'text-rose-500' : (a.violationsCount || (a as any).violations_count) > 0 ? 'text-amber-500' : 'text-gray-400'}`}>
@@ -466,12 +574,31 @@ const QuizAttempts: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <div className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${a.passed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                                                        {a.passed ? 'ĐẠT' : 'CHƯA ĐẠT'}
-                                                    </div>
+                                                    {(() => {
+                                                        const score = Number(a.score) || 0;
+                                                        const maxScore = a.quiz?.maxScore || data.quiz?.maxScore || 100;
+                                                        const percentage = Math.round((score / maxScore) * 100);
+                                                        const passingScore = a.quiz?.passingScore || data.quiz?.passingScore || 50;
+                                                        const isPassed = percentage >= passingScore;
+                                                        return (
+                                                            <div className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${isPassed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                                                                {isPassed ? 'ĐẠT' : 'CHƯA ĐẠT'}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center justify-end gap-2">
+                                                        {/* Check if attempt has essay questions that need grading */}
+                                                        {(a as any).manualGradingCount > 0 && (
+                                                            <button
+                                                                onClick={() => openGradingModal(a.id)}
+                                                                className="p-3 bg-amber-50 rounded-xl border border-amber-100 shadow-sm text-amber-600 hover:bg-amber-500 hover:text-white transition-all cursor-pointer"
+                                                                title="Chấm điểm bài tự luận"
+                                                            >
+                                                                <Edit3 size={18} />
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => navigate(`/quiz/${data.quiz?.id}?attemptId=${a.id}`)}
                                                             className="p-3 bg-white rounded-xl border border-gray-100 shadow-sm text-gray-400 hover:bg-gray-900 hover:text-white transition-all cursor-pointer"
@@ -522,9 +649,21 @@ const QuizAttempts: React.FC = () => {
                                                     <p className="font-bold text-gray-900">{r.userName}</p>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <div className="text-lg font-bold text-gray-900">
-                                                        {r.highestScore}<span className="text-xs text-gray-400">/{data.quiz?.maxScore || 100}</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const maxScore = data.quiz?.maxScore || 100;
+                                                        const percentage = r.highestScore; // highestScore is already percentage
+                                                        const actualScore = Math.round((percentage / 100) * maxScore);
+                                                        return (
+                                                            <div className="flex flex-col">
+                                                                <div className="text-lg font-bold text-gray-900">
+                                                                    {actualScore}<span className="text-xs text-gray-400">/{maxScore}</span>
+                                                                </div>
+                                                                <div className={`text-xs font-bold ${percentage >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                    {Math.round(percentage)}%
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-2 text-sm font-bold text-gray-600">
@@ -533,9 +672,15 @@ const QuizAttempts: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6 text-left">
-                                                    <div className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${r.passed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                                                        {r.passed ? 'ĐẠT' : 'CHƯA ĐẠT'}
-                                                    </div>
+                                                    {(() => {
+                                                        const passingScore = data.quiz?.passingScore || 50;
+                                                        const isPassed = r.highestScore >= passingScore;
+                                                        return (
+                                                            <div className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${isPassed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                                                                {isPassed ? 'ĐẠT' : 'CHƯA ĐẠT'}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                             </tr>
                                         ))}
@@ -559,7 +704,7 @@ const QuizAttempts: React.FC = () => {
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-4">
                                                         <img
-                                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.userName)}`}
+                                                            src={'/default-avatar.png'}
                                                             alt={u.userName}
                                                             className="w-10 h-10 rounded-full object-cover shadow-sm"
                                                         />
@@ -679,6 +824,105 @@ const QuizAttempts: React.FC = () => {
                                     HỦY BỎ
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Grading Modal */}
+            {gradingModalOpen && gradingAttempt && (
+                <div className="fixed inset-0 z-100 flex items-center justify-center bg-gray-900/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="bg-white max-w-4xl w-full rounded-[40px] p-10 shadow-2xl relative animate-in zoom-in duration-500 max-h-[90vh] flex flex-col">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-2xl font-bold text-gray-900">Chấm điểm bài tự luận</h3>
+                                <p className="text-gray-500 font-bold text-sm tracking-tight mt-1">
+                                    {gradingAttempt.User?.name || (gradingAttempt as any).user?.name || 'Học viên'}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setGradingModalOpen(false)}
+                                className="p-3 bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-2xl transition-all cursor-pointer"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 pr-2 space-y-6">
+                            {gradingQuestions.filter((q: any) => q.type === 'essay').map((q: any) => {
+                                const questionId = String(q.id);
+                                const grading = gradingData[questionId] || { points: 0, feedback: '' };
+                                const maxPoints = q.points || 10;
+                                
+                                return (
+                                    <div key={questionId} className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                                        <div className="mb-4">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase">Tự luận</span>
+                                                <span className="text-xs font-bold text-gray-400">{maxPoints} điểm tối đa</span>
+                                            </div>
+                                            <p className="text-gray-900 font-bold text-sm leading-relaxed">{q.content}</p>
+                                        </div>
+                                        
+                                        <div className="mb-4 p-4 bg-white rounded-2xl border border-gray-100">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Bài làm của học viên</p>
+                                            <p className="text-gray-700 font-medium text-sm">{q.userAnswer || '(Chưa có câu trả lời)'}</p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Điểm</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={maxPoints}
+                                                    value={grading.points}
+                                                    onChange={(e) => setGradingData(prev => ({
+                                                        ...prev,
+                                                        [questionId]: { ...prev[questionId], points: Math.min(maxPoints, Math.max(0, Number(e.target.value))) }
+                                                    }))}
+                                                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-900 outline-none focus:border-amber-500 transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Nhận xét</label>
+                                                <input
+                                                    type="text"
+                                                    value={grading.feedback}
+                                                    onChange={(e) => setGradingData(prev => ({
+                                                        ...prev,
+                                                        [questionId]: { ...prev[questionId], feedback: e.target.value }
+                                                    }))}
+                                                    placeholder="Nhận xét cho học viên..."
+                                                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-900 outline-none focus:border-amber-500 transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            
+                            {gradingQuestions.filter((q: any) => q.type === 'essay').length === 0 && (
+                                <div className="py-20 text-center">
+                                    <p className="text-gray-400 font-bold text-sm">Không có câu hỏi tự luận nào cần chấm điểm.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="pt-8 flex gap-4">
+                            <button
+                                onClick={() => setGradingModalOpen(false)}
+                                className="flex-1 bg-white text-gray-500 py-5 rounded-3xl font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-all cursor-pointer"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button
+                                onClick={submitGrades}
+                                disabled={isSubmittingGrade}
+                                className="flex-1 bg-gray-900 text-white py-5 rounded-3xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-xl shadow-gray-200 active:scale-95 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isSubmittingGrade ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                                {isSubmittingGrade ? 'Đang lưu...' : 'Lưu điểm'}
+                            </button>
                         </div>
                     </div>
                 </div>

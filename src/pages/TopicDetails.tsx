@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { forumService } from '../services/forum.service';
 import type { ForumTopic, ForumPost } from '../services/forum.service';
-import { AtSign, Award, CheckCircle2, ChevronLeft, Clock, Flag, Ghost, Send, Smile, ThumbsUp, Trash2, X, AlertOctagon, ShieldOff, CornerDownRight, Reply, User } from 'lucide-react';
+import { AtSign, Award, CheckCircle2, ChevronLeft, Clock, Flag, Ghost, Send, Smile, ThumbsUp, Trash2, X, AlertOctagon, ShieldOff, CornerDownRight, Reply, User, Loader2 } from 'lucide-react';
 import { safeFormatDistanceToNow } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -25,6 +25,8 @@ const TopicDetails: React.FC = () => {
     const [submittingReport, setSubmittingReport] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState<number | 'main' | null>(null);
     const [banError, setBanError] = useState<{ message: string; bannedUntil: string; banReason: string } | null>(null);
+    // 🛡️ P2-2 FIX: Track posts being liked to prevent double submit
+    const [likingPosts, setLikingPosts] = useState<Set<number>>(new Set());
 
     const EMOJIS = ['😀', '😂', '😅', '😍', '🥳', '😎', '🤔', '😢',
         '😡', '👍', '👎', '❤️', '🔥', '👏', '🎓', '💡', '🎉', '🚀',
@@ -108,7 +110,7 @@ const TopicDetails: React.FC = () => {
                     author: {
                         id: 1,
                         name: "Hoàng Nguyễn",
-                        avatar: "https://i.pravatar.cc/150?u=1",
+                        avatar: "/default-avatar.png",
                         role: "STUDENT"
                     },
                     views: 240,
@@ -127,7 +129,7 @@ const TopicDetails: React.FC = () => {
                             author: {
                                 id: 2,
                                 name: "Minh Thu",
-                                avatar: "https://i.pravatar.cc/150?u=2",
+                                avatar: "/default-avatar.png",
                                 role: "TEACHER"
                             },
                             parentId: null,
@@ -189,11 +191,19 @@ const TopicDetails: React.FC = () => {
         }
     };
 
+    // 🛡️ P2-2 FIX: Handle like với protection chống double submit
     const handleLike = async (postId: number) => {
         if (!user) {
             toast.error('Vui lòng đăng nhập để thích bản tin');
             return;
         }
+        
+        // Prevent if already liking this post
+        if (likingPosts.has(postId)) return;
+        
+        // Mark as liking
+        setLikingPosts(prev => new Set(prev).add(postId));
+        
         try {
             const res = await forumService.toggleLike(postId);
 
@@ -217,6 +227,13 @@ const TopicDetails: React.FC = () => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             toast.error('Thao tác thất bại');
+        } finally {
+            // Remove from liking set
+            setLikingPosts(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(postId);
+                return newSet;
+            });
         }
     };
 
@@ -297,7 +314,7 @@ const TopicDetails: React.FC = () => {
                     </div>
                     <div id={`post-${reply.id}`} className="bg-gray-50/80 rounded-[24px] p-4 md:p-6 border border-gray-100 flex-1 relative group hover:bg-white transition-all duration-300 shadow-sm">
                         <div className="flex gap-3 md:gap-4">
-                            <img src={reply.author?.avatar || "https://i.pravatar.cc/150"} className="w-6 h-6 md:w-8 md:h-8 rounded-full object-cover" alt="" />
+                            <img src={reply.author?.avatar || '/default-avatar.png'} className="w-6 h-6 md:w-8 md:h-8 rounded-full object-cover" alt="" />
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-2">
                                     <h5 className="text-xs md:text-[13px] font-black text-slate-900">{reply.author?.name || 'Vô danh'}</h5>
@@ -318,11 +335,17 @@ const TopicDetails: React.FC = () => {
                                     {reply.content}
                                 </p>
                                 <div className="flex items-center mt-2">
+                                    {/* 🛡️ P2-2 FIX: Disable khi đang like */}
                                     <button
                                         onClick={() => handleLike(reply.id)}
-                                        className="flex items-center gap-1.5 group/btn py-1 px-3 hover:bg-gray-100 rounded-lg transition-all cursor-pointer"
+                                        disabled={likingPosts.has(reply.id)}
+                                        className="flex items-center gap-1.5 group/btn py-1 px-3 hover:bg-gray-100 rounded-lg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <ThumbsUp size={12} className={`transition-colors ${reply.likes ? 'text-blue-500' : 'text-gray-400 group-hover/btn:text-blue-500'}`} />
+                                        {likingPosts.has(reply.id) ? (
+                                            <Loader2 size={12} className="animate-spin text-blue-500" />
+                                        ) : (
+                                            <ThumbsUp size={12} className={`transition-colors ${reply.likes ? 'text-blue-500' : 'text-gray-400 group-hover/btn:text-blue-500'}`} />
+                                        )}
                                         <span className={`text-[10px] font-black transition-colors ${reply.likes ? 'text-blue-600' : 'text-gray-400 group-hover/btn:text-slate-900'}`}>{reply.likes || 0}</span>
                                     </button>
 
@@ -425,7 +448,7 @@ const TopicDetails: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-[#FDF8EE] pb-20 pt-20">
+        <div className="min-h-screen bg-slate-50 pb-20 pt-20">
             <div className="max-w-7xl mx-auto px-6">
                 {/* Navigation & Header */}
                 <div className="flex items-center justify-between mb-8">
@@ -448,36 +471,36 @@ const TopicDetails: React.FC = () => {
                     )}
                 </div>
 
-                {/* Main Topic Card */}
-                <div className="bg-slate-900 rounded-[40px] p-8 md:p-12 text-white shadow-2xl shadow-slate-900/40 relative overflow-hidden mb-8">
-                    <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-amber-500/10 rounded-full blur-[100px] translate-x-1/2 -translate-y-1/2"></div>
+                {/* Main Topic Card - Light theme for better readability */}
+                <div className="bg-white rounded-[40px] p-8 md:p-12 shadow-lg border border-slate-100 relative overflow-hidden mb-8">
+                    <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] translate-x-1/2 -translate-y-1/2"></div>
 
                     <div className="relative z-10">
                         <div className="flex flex-wrap items-center gap-4 mb-8">
-                            <div className="px-4 py-1.5 bg-white/5 backdrop-blur-md border border-white/10 rounded-full flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${topic.type === 'global' ? 'bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.5)]' : 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]'}`}></span>
-                                <span className="text-sm font-bold opacity-70">
+                            <div className="px-4 py-1.5 bg-slate-100 border border-slate-200 rounded-full flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${topic.type === 'global' ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]'}`}></span>
+                                <span className="text-sm font-bold text-slate-600">
                                     {topic.type === 'global' ? 'Thảo luận chung' : (topic.courseId ? `Khóa học #${topic.courseId}` : 'Khóa học')}
                                 </span>
                             </div>
-                            <span className="text-white/20">•</span>
-                            <div className="flex items-center gap-2 text-white/40 text-sm">
+                            <span className="text-slate-300">•</span>
+                            <div className="flex items-center gap-2 text-slate-400 text-sm">
                                 <Clock size={12} />
                                 {safeFormatDistanceToNow(topic.createdAt)}
                             </div>
                         </div>
 
-                        <h1 className="text-lg md:text-xl lg:text-2xl font-bold mb-8">
+                        <h1 className="text-xl md:text-2xl lg:text-3xl font-bold mb-8 text-slate-800">
                             {topic.title}
                         </h1>
 
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-10 pb-10 border-b border-white/5">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-10 pb-10 border-b border-slate-100">
                             <div className="flex items-center gap-4 flex-1">
-                                <img src={topic.author?.avatar || "https://i.pravatar.cc/150"} className="w-12 h-12 rounded-full object-cover shadow-2xl border-2 border-white/10" alt="" />
+                                <img src={topic.author?.avatar || '/default-avatar.png'} className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white" alt="" />
                                 <div>
-                                    <h4 className="text-lg font-bold">{topic.author?.name || 'Vô danh'}</h4>
+                                    <h4 className="text-lg font-bold text-slate-800">{topic.author?.name || 'Vô danh'}</h4>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-lg">{topic.author?.role || 'Học viên'}</span>
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg">{topic.author?.role || 'Học viên'}</span>
                                         {topic.author?.role?.toUpperCase() === 'TEACHER' && <Award size={14} className="text-amber-500" />}
                                     </div>
                                 </div>
@@ -486,7 +509,7 @@ const TopicDetails: React.FC = () => {
                             {user && String(user.id) !== String(topic.userId) && (
                                 <button
                                     onClick={() => setIsReportingTopic(true)}
-                                    className="px-4 py-2 bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-400 rounded-xl transition-all border border-white/10 flex items-center gap-2 cursor-pointer group"
+                                    className="px-4 py-2 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-500 rounded-xl transition-all border border-slate-200 flex items-center gap-2 cursor-pointer group"
                                 >
                                     <Flag size={14} className="group-hover:scale-110 transition-transform" />
                                     <span className="text-xs font-bold">Báo cáo chủ đề</span>
@@ -494,7 +517,7 @@ const TopicDetails: React.FC = () => {
                             )}
                         </div>
 
-                        <div className="text-base md:text-lg leading-relaxed text-white/70 font-medium whitespace-pre-wrap">
+                        <div className="text-base md:text-lg leading-relaxed text-slate-600 font-medium whitespace-pre-wrap">
                             {topic.content}
                         </div>
                     </div>
@@ -528,7 +551,7 @@ const TopicDetails: React.FC = () => {
                                     <div className="flex gap-6">
                                         <div className="shrink-0 hidden sm:block">
                                             <div className="relative">
-                                                <img src={post.author?.avatar || "https://i.pravatar.cc/150"} className="w-12 h-12 rounded-full object-cover shadow-sm" alt="" />
+                                                <img src={post.author?.avatar || '/default-avatar.png'} className="w-12 h-12 rounded-full object-cover shadow-sm" alt="" />
                                                 <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-lg border-2 border-white flex items-center justify-center ${post.author?.role?.toUpperCase() === 'TEACHER' ? 'bg-amber-500' : 'bg-slate-900'}`}>
                                                     {post.author?.role?.toUpperCase() === 'TEACHER' ? <Award size={10} className="text-white" /> : <User size={10} className="text-white" />}
                                                 </div>
@@ -563,11 +586,17 @@ const TopicDetails: React.FC = () => {
 
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-4">
+                                                    {/* 🛡️ P2-2 FIX: Disable khi đang like */}
                                                     <button
                                                         onClick={() => handleLike(post.id)}
-                                                        className="flex items-center gap-2 group/btn px-4 py-2 hover:bg-gray-50 rounded-xl transition-all cursor-pointer"
+                                                        disabled={likingPosts.has(post.id)}
+                                                        className="flex items-center gap-2 group/btn px-4 py-2 hover:bg-gray-50 rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
-                                                        <ThumbsUp size={14} className="text-gray-400 group-hover/btn:text-blue-500 transition-colors" />
+                                                        {likingPosts.has(post.id) ? (
+                                                            <Loader2 size={14} className="animate-spin text-blue-500" />
+                                                        ) : (
+                                                            <ThumbsUp size={14} className="text-gray-400 group-hover/btn:text-blue-500 transition-colors" />
+                                                        )}
                                                         <span className="text-xs font-black text-gray-400 group-hover/btn:text-slate-900">{post.likes || 0}</span>
                                                     </button>
                                                     <button
@@ -700,7 +729,7 @@ const TopicDetails: React.FC = () => {
                             ) : (
                                 <div className="flex items-center gap-4">
                                     <div className="hidden sm:block shrink-0">
-                                        <img src={user?.avatar || "https://i.pravatar.cc/150"} className="w-12 h-12 rounded-full object-cover border-2 border-white/10 shadow-sm" alt="" />
+                                        <img src={user?.avatar || '/default-avatar.png'} className="w-12 h-12 rounded-full object-cover border-2 border-white/10 shadow-sm" alt="" />
                                     </div>
                                     <div className="flex-1 relative">
                                         <textarea

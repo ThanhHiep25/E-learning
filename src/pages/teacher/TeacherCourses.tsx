@@ -12,16 +12,25 @@ import {
     ChevronRight,
     AlertCircle,
     X,
+    Play,
+    Send,
+    Clock,
+    XCircle,
+    CheckCircle2,
+    FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { teacherService, type BackendTeacherCourse } from '../../services/teacher.service';
+import { teacherService, type BackendTeacherCourse, type CourseStatus } from '../../services/teacher.service';
 
 const TeacherCourses: React.FC = () => {
     const navigate = useNavigate();
     const [courses, setCourses] = useState<BackendTeacherCourse[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [query, setQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | CourseStatus>('all');
+    const [courseToSubmit, setCourseToSubmit] = useState<BackendTeacherCourse | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [courseToViewRejection, setCourseToViewRejection] = useState<BackendTeacherCourse | null>(null);
     const [levelFilter, setLevelFilter] = useState<string>('all');
     const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name_asc' | 'name_desc'>('newest');
     const [currentPage, setCurrentPage] = useState(1);
@@ -75,8 +84,7 @@ const TeacherCourses: React.FC = () => {
 
         // Status Filter
         if (statusFilter !== 'all') {
-            const isPublished = statusFilter === 'published';
-            result = result.filter(c => !!c.published === isPublished);
+            result = result.filter(c => c.status === statusFilter);
         }
 
         // Level Filter
@@ -115,6 +123,25 @@ const TeacherCourses: React.FC = () => {
             toast.error(e instanceof Error ? e.message : 'Lỗi khi xóa khóa học');
         } finally {
             setIsDeleting(false);
+        }
+    };
+
+    const handleSubmitForReview = async () => {
+        if (!courseToSubmit) return;
+
+        try {
+            setIsSubmitting(true);
+            const result = await teacherService.submitCourseForReview(String(courseToSubmit.id));
+            toast.success(result.message);
+            // Update course status locally
+            setCourses(prev => prev.map(c =>
+                String(c.id) === String(courseToSubmit.id) ? { ...c, status: 'pending_review' as CourseStatus } : c
+            ));
+            setCourseToSubmit(null);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Lỗi khi gửi yêu cầu duyệt');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -172,7 +199,9 @@ const TeacherCourses: React.FC = () => {
                                 >
                                     <option value="all">Tất cả</option>
                                     <option value="published">Đã xuất bản</option>
+                                    <option value="pending_review">Chờ duyệt</option>
                                     <option value="draft">Bản nháp</option>
+                                    <option value="rejected">Bị từ chối</option>
                                 </select>
                             </div>
 
@@ -218,6 +247,7 @@ const TeacherCourses: React.FC = () => {
                                     <tr>
                                         <th className="px-8 py-4 text-xs font-bold text-gray-400 ">Khóa học</th>
                                         <th className="px-8 py-4 text-xs font-bold text-gray-400 ">Cấp độ</th>
+                                        <th className="px-8 py-4 text-xs font-bold text-gray-400 ">Thời hạn</th>
                                         <th className="px-8 py-4 text-xs font-bold text-gray-400 ">Trạng thái</th>
                                         <th className="px-8 py-4 text-xs font-bold text-gray-400 ">Học viên</th>
                                         <th className="px-8 py-4 text-xs font-bold text-gray-400 ">Thao tác</th>
@@ -244,9 +274,46 @@ const TeacherCourses: React.FC = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-1 rounded-full ">
-                                                        {course.published ? 'Đã xuất bản' : 'Bản nháp'}
-                                                    </span>
+                                                    {course.durationType === 'lifetime' ? (
+                                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+                                                            Vĩnh viễn
+                                                        </span>
+                                                    ) : course.durationType === 'fixed' && course.durationValue ? (
+                                                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+                                                            {course.durationValue} {course.durationUnit === 'months' ? 'tháng' : course.durationUnit === 'years' ? 'năm' : 'ngày'}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-gray-400">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-8 py-6">
+                                                    {course.status === 'published' && (
+                                                        <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-fit">
+                                                            <CheckCircle2 size={12} />
+                                                            Đã xuất bản
+                                                        </span>
+                                                    )}
+                                                    {course.status === 'draft' && (
+                                                        <span className="bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-fit">
+                                                            <FileText size={12} />
+                                                            Bản nháp
+                                                        </span>
+                                                    )}
+                                                    {course.status === 'pending_review' && (
+                                                        <span className="bg-amber-50 text-amber-600 text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-fit">
+                                                            <Clock size={12} />
+                                                            Chờ duyệt
+                                                        </span>
+                                                    )}
+                                                    {course.status === 'rejected' && (
+                                                        <span className="bg-rose-50 text-rose-600 text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-fit cursor-pointer hover:bg-rose-100"
+                                                            onClick={() => setCourseToViewRejection(course)}
+                                                            title="Xem lý do từ chối"
+                                                        >
+                                                            <XCircle size={12} />
+                                                            Bị từ chối
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
@@ -256,6 +323,16 @@ const TeacherCourses: React.FC = () => {
                                                 </td>
                                                 <td className="px-8 py-6 text-right">
                                                     <div className="flex items-center justify-end gap-2">
+                                                        {(course.status === 'draft' || course.status === 'rejected') && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); setCourseToSubmit(course); }}
+                                                                className="p-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-xl transition-all cursor-pointer relative z-10"
+                                                                title="Gửi yêu cầu duyệt"
+                                                            >
+                                                                <Send size={18} />
+                                                            </button>
+                                                        )}
                                                         <button
                                                             type="button"
                                                             onClick={(e) => { e.stopPropagation(); navigate(`/course/${course.id}`); }}
@@ -266,8 +343,16 @@ const TeacherCourses: React.FC = () => {
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            onClick={(e) => { e.stopPropagation(); navigate(`/teacher/content-editor/${course.id}`); }}
+                                                            onClick={(e) => { e.stopPropagation(); navigate(`/course/${course.id}/lesson`); }}
                                                             className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all cursor-pointer relative z-10"
+                                                            title="Vào quản lý (xem nội dung)"
+                                                        >
+                                                            <Play size={18} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); navigate(`/teacher/content-editor/${course.id}`); }}
+                                                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer relative z-10"
                                                             title="Quản lý bài giảng"
                                                         >
                                                             <BookOpen size={18} />
@@ -275,7 +360,7 @@ const TeacherCourses: React.FC = () => {
                                                         <button
                                                             type="button"
                                                             onClick={(e) => { e.stopPropagation(); navigate(`/teacher/edit-course/${course.id}`); }}
-                                                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer relative z-10"
+                                                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer relative z-10"
                                                             title="Chỉnh sửa"
                                                         >
                                                             <Edit3 size={18} />
@@ -399,6 +484,110 @@ const TeacherCourses: React.FC = () => {
                                     )}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Gửi Yêu Cầu Duyệt */}
+            {courseToSubmit && (
+                <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div
+                        className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="relative p-8 text-center">
+                            <button
+                                type="button"
+                                onClick={() => setCourseToSubmit(null)}
+                                className="absolute right-6 top-6 p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-2xl transition-all"
+                            >
+                                <X size={20} />
+                            </button>
+
+                            <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-[32px] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-amber-100/50">
+                                <Send size={40} strokeWidth={2.5} />
+                            </div>
+
+                            <h3 className="text-2xl font-black text-gray-900 mb-2">Gửi yêu cầu duyệt?</h3>
+                            <p className="text-gray-500 font-medium mb-8 leading-relaxed">
+                                Bạn có chắc chắn muốn gửi khóa học <br />
+                                <span className="text-amber-600 font-bold">"{courseToSubmit.title}"</span> <br />
+                                để admin phê duyệt? Sau khi gửi, bạn không thể chỉnh sửa cho đến khi có kết quả.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <button
+                                    onClick={() => setCourseToSubmit(null)}
+                                    className="py-4 rounded-[24px] text-sm font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
+                                >
+                                    Hủy bỏ
+                                </button>
+                                <button
+                                    onClick={handleSubmitForReview}
+                                    disabled={isSubmitting}
+                                    className={`py-4 rounded-[24px] text-sm font-black uppercase tracking-widest text-white shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${isSubmitting
+                                        ? 'bg-gray-200 cursor-not-allowed'
+                                        : 'bg-amber-500 hover:bg-amber-600 shadow-amber-200 hover:shadow-amber-300'
+                                        }`}
+                                >
+                                    {isSubmitting ? (
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            <Send size={18} />
+                                            <span>Gửi duyệt</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Xem Lý Do Từ Chối */}
+            {courseToViewRejection && (
+                <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div
+                        className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="relative p-8">
+                            <button
+                                type="button"
+                                onClick={() => setCourseToViewRejection(null)}
+                                className="absolute right-6 top-6 p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-2xl transition-all"
+                            >
+                                <X size={20} />
+                            </button>
+
+                            <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-[32px] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-rose-100/50">
+                                <XCircle size={40} strokeWidth={2.5} />
+                            </div>
+
+                            <h3 className="text-2xl font-black text-gray-900 mb-2 text-center">Khóa học bị từ chối</h3>
+                            <p className="text-gray-500 font-medium mb-6 text-center">
+                                <span className="text-rose-600 font-bold">"{courseToViewRejection.title}"</span>
+                            </p>
+
+                            <div className="bg-rose-50 rounded-2xl p-5 mb-6">
+                                <p className="text-xs font-bold text-rose-600 uppercase tracking-widest mb-2">Lý do từ chối:</p>
+                                <p className="text-gray-700 font-medium leading-relaxed">
+                                    {courseToViewRejection.rejectionReason || 'Không có lý do cụ thể'}
+                                </p>
+                            </div>
+
+                            <p className="text-xs text-gray-400 text-center mb-6">
+                                Bạn có thể chỉnh sửa khóa học và gửi lại yêu cầu duyệt.
+                            </p>
+
+                            <button
+                                onClick={() => setCourseToViewRejection(null)}
+                                className="w-full py-4 rounded-[24px] text-sm font-black uppercase tracking-widest bg-gray-900 text-white hover:bg-gray-800 transition-all active:scale-95"
+                            >
+                                Đã hiểu
+                            </button>
                         </div>
                     </div>
                 </div>

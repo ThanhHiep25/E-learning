@@ -12,6 +12,7 @@ const VirtualBot: React.FC<VirtualBotProps> = ({ onChatToggle }) => {
     const [messageIndex, setMessageIndex] = useState(0);
 
     const messages = [
+        "Mình Là Bot Hỗ Trợ ",
         "Hi fen! Có khóa học gì mới chưa người đẹp",
         "Đừng bỏ lỡ bài kiếm tra chỉ còn trong hôm nay nhé!",
         "Check khóa học hiện tại xem nào",
@@ -39,7 +40,7 @@ const VirtualBot: React.FC<VirtualBotProps> = ({ onChatToggle }) => {
                     setShowBubble(true);
                 }, 600);
             }
-        }, 100000);
+        }, 50000);
 
         return () => {
             clearTimeout(entryTimer);

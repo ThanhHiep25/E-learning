@@ -6,11 +6,12 @@ import {
     Save, ArrowLeft, Layout,
     FileText, Image as ImageIcon, Link as LinkIcon,
     File as FileIcon, X, Eye, EyeOff,
-    LoaderCircle, Music
+    LoaderCircle, Music, Zap
 } from 'lucide-react';
 import { type CurriculumModule, type Lesson, type LessonAttachment } from '../../config/mock-data';
 import toast from 'react-hot-toast';
 import { teacherService, type BackendTeacherChapter, type BackendTeacherLecture } from '../../services/teacher.service';
+import QuizQuestionEditor from './QuizQuestionEditor';
 import ReactQuill from 'react-quill-new';
 import 'quill/dist/quill.snow.css';
 
@@ -18,6 +19,12 @@ const ContentEditor: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [courseTitle, setCourseTitle] = useState<string>('');
+    const [courseDuration, setCourseDuration] = useState<{
+        durationType?: 'lifetime' | 'fixed' | 'subscription';
+        durationValue?: number;
+        durationUnit?: 'days' | 'months' | 'years';
+        renewalDiscountPercent?: number;
+    } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [curriculum, setCurriculum] = useState<CurriculumModule[]>([]);
     const [expandedModules, setExpandedModules] = useState<string[]>([]);
@@ -31,6 +38,14 @@ const ContentEditor: React.FC = () => {
     const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
     const [newChapterTitle, setNewChapterTitle] = useState('');
     const [isCreatingChapter, setIsCreatingChapter] = useState(false);
+
+    // Auto-detect duration state
+    const [autoDuration, setAutoDuration] = useState(false);
+    const [detectedVideoDuration, setDetectedVideoDuration] = useState<number | null>(null); // Store actual video duration in seconds
+
+    // Quiz Modal State
+    const [quizModalOpen, setQuizModalOpen] = useState(false);
+    const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
 
     // Giải mã HTML entities (biến &lt; thành <, &gt; thành >, ...) mà không mất thẻ
     const decodeHTML = (html: string) => {
@@ -71,10 +86,23 @@ const ContentEditor: React.FC = () => {
     };
 
     const mapBackendChapterToModule = (chapter: BackendTeacherChapter): CurriculumModule => {
+        const lectures = ((chapter as any).lectures || []).map(mapBackendLectureToLesson);
+        const quizzes = ((chapter as any).quizzes || []).map((quiz: any) => ({
+            id: `quiz-${quiz.id}`,
+            title: quiz.title,
+            duration: `${quiz.timeLimit || 30} phút`,
+            isPreview: false,
+            attachments: [],
+            videoUrl: '',
+            content: quiz.description || '',
+            type: 'quiz',
+            quizId: String(quiz.id),
+            status: quiz.status || 'draft',
+        } as any));
         return {
             id: String(chapter.id),
             title: chapter.title,
-            lessons: (chapter.Lectures || []).map(mapBackendLectureToLesson),
+            lessons: [...lectures, ...quizzes],
         } as any;
     };
 
@@ -137,7 +165,14 @@ const ContentEditor: React.FC = () => {
             try {
                 setIsLoading(true);
                 const data = await teacherService.getCourseContent(String(id));
-                setCourseTitle(String((data as any)?.course?.title || ''));
+                const course = (data as any)?.course;
+                setCourseTitle(String(course?.title || ''));
+                setCourseDuration({
+                    durationType: course?.durationType,
+                    durationValue: course?.durationValue,
+                    durationUnit: course?.durationUnit,
+                    renewalDiscountPercent: course?.renewalDiscountPercent,
+                });
                 const modules = (data.chapters || []).map(mapBackendChapterToModule);
                 setCurriculum(modules);
                 setExpandedModules(modules.map((m) => m.id));
@@ -218,6 +253,8 @@ const ContentEditor: React.FC = () => {
 
                 setEditingLesson({ mIdx, lIdx: module.lessons.length });
                 setEditingModuleIdx(null);
+                setAutoDuration(false); // Reset auto duration for new lesson
+                setDetectedVideoDuration(null); // Reset detected video duration
                 toast.success(`Đã thêm bài học ${type.toUpperCase()}`);
             } catch (e) {
                 toast.error(e instanceof Error ? e.message : 'Tạo bài giảng thất bại');
@@ -225,6 +262,20 @@ const ContentEditor: React.FC = () => {
         };
 
         run();
+    };
+
+    const saveLectureBeforeIngest = async (lesson: Lesson, lIdx: number) => {
+        await teacherService.updateLecture({
+            lectureId: String((lesson as any).id),
+            title: lesson.title,
+            type: String((lesson as any).type || 'video'),
+            contentUrl: (lesson as any).videoUrl || undefined,
+            content: (lesson as any).content || undefined,
+            duration: parseDurationToSeconds(lesson.duration),
+            isPreview: Boolean((lesson as any).isPreview),
+            attachments: Array.isArray((lesson as any).attachments) ? (lesson as any).attachments : [],
+            order: lIdx,
+        });
     };
 
     const handleSave = () => {
@@ -245,6 +296,8 @@ const ContentEditor: React.FC = () => {
                     const module = curriculum[mIdx];
                     for (let lIdx = 0; lIdx < (module.lessons || []).length; lIdx += 1) {
                         const lesson = module.lessons[lIdx];
+                        // Skip quiz lessons - they are not lectures
+                        if ((lesson as any).type === 'quiz') continue;
                         lectureUpdates.push(
                             teacherService.updateLecture({
                                 lectureId: String((lesson as any).id),
@@ -300,6 +353,43 @@ const ContentEditor: React.FC = () => {
         setCurriculum(newCurriculum);
     };
 
+    const detectDurationFromFile = (file: File): Promise<number> => {
+        return new Promise((resolve) => {
+            const type = file.type.toLowerCase();
+            console.log('[Duration] File type:', type);
+            
+            if (!type.startsWith('video/') && !type.startsWith('audio/')) {
+                console.log('[Duration] Not video/audio, skipping');
+                resolve(0);
+                return;
+            }
+
+            const media = type.startsWith('video/') ? document.createElement('video') : document.createElement('audio');
+            const url = URL.createObjectURL(file);
+            
+            media.onloadedmetadata = () => {
+                console.log('[Duration] Detected:', media.duration, 'seconds');
+                URL.revokeObjectURL(url);
+                resolve(Math.round(media.duration));
+            };
+            
+            media.onerror = (e) => {
+                console.error('[Duration] Error loading media:', e);
+                URL.revokeObjectURL(url);
+                resolve(0);
+            };
+            
+            media.src = url;
+            media.load();
+        });
+    };
+
+    const formatDurationFromSeconds = (seconds: number): string => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+
     const uploadLectureFile = async (file: File) => {
         if (!editingLesson || !currentLesson) return;
         try {
@@ -307,6 +397,9 @@ const ContentEditor: React.FC = () => {
             const lectureId = String((currentLesson as any).id);
             const type = String((currentLesson as any).type || guessLectureTypeFromFile(file));
 
+            // Auto-detect duration for video/audio
+            const durationSeconds = await detectDurationFromFile(file);
+            
             // Local preview
             const url = URL.createObjectURL(file);
             if (previewLectureUrl) URL.revokeObjectURL(previewLectureUrl);
@@ -318,12 +411,22 @@ const ContentEditor: React.FC = () => {
                 type,
             });
 
-            updateCurrentLesson({
+            const updates: any = {
                 videoUrl: updated.contentUrl || '',
                 type: updated.type,
-            } as any);
+            };
+            
+            // Auto-update duration if detected
+            if (durationSeconds > 0) {
+                updates.duration = formatDurationFromSeconds(durationSeconds);
+                setAutoDuration(true);
+                setDetectedVideoDuration(durationSeconds); // Store detected duration
+                toast.success(`Upload thành công! Thời lượng: ${formatDurationFromSeconds(durationSeconds)}`);
+            } else {
+                toast.success('Upload file thành công');
+            }
 
-            toast.success('Upload file thành công');
+            updateCurrentLesson(updates);
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Upload file thất bại');
         } finally {
@@ -435,7 +538,21 @@ const ContentEditor: React.FC = () => {
                             Xây dựngchương trình học.
                         </h1>
                         {courseTitle && (
-                            <p className="md:text-xs text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">{courseTitle}</p>
+                            <div className="flex items-center gap-3 mt-2">
+                                <p className="md:text-xs text-[10px] font-bold text-gray-400 uppercase tracking-widest">{courseTitle}</p>
+                                {courseDuration && (
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                                        courseDuration.durationType === 'lifetime' 
+                                            ? 'bg-emerald-50 text-emerald-600' 
+                                            : 'bg-amber-50 text-amber-600'
+                                    }`}>
+                                        {courseDuration.durationType === 'lifetime' 
+                                            ? 'Vĩnh viễn' 
+                                            : `${courseDuration.durationValue} ${courseDuration.durationUnit === 'months' ? 'tháng' : courseDuration.durationUnit === 'years' ? 'năm' : 'ngày'}`
+                                        }
+                                    </span>
+                                )}
+                            </div>
                         )}
                     </div>
 
@@ -492,7 +609,14 @@ const ContentEditor: React.FC = () => {
                                             >
                                                 <div className="flex items-center gap-3 mb-1">
                                                     <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest px-2 py-0.5 bg-amber-50 rounded-md">Chapter {mIdx + 1}</span>
-                                                    <span className="text-[10px] font-bold text-gray-400">{module.lessons.length} bài học</span>
+                                                    <span className="text-[10px] font-bold text-gray-400">
+                                                        {module.lessons.filter(l => (l as any).type !== 'quiz').length} bài học
+                                                        {module.lessons.some(l => (l as any).type === 'quiz') && (
+                                                            <span className="ml-2 text-purple-500">
+                                                                · {module.lessons.filter(l => (l as any).type === 'quiz').length} quiz
+                                                            </span>
+                                                        )}
+                                                    </span>
                                                 </div>
                                                 <div className="md:text-xl text-md font-bold text-gray-900 group-hover:text-amber-600 transition-colors uppercase tracking-tight">
                                                     {module.title}
@@ -506,6 +630,8 @@ const ContentEditor: React.FC = () => {
                                                 onClick={() => {
                                                     setEditingModuleIdx(mIdx);
                                                     setEditingLesson(null);
+                                                    setAutoDuration(false); // Reset when switching to module edit
+                                                    setDetectedVideoDuration(null); // Reset detected video duration
                                                 }}
                                                 title="Sửa tiêu đề chương"
                                             >
@@ -521,6 +647,8 @@ const ContentEditor: React.FC = () => {
                                                         setExpandedModules(expandedModules.filter((x) => x !== module.id));
                                                         setEditingLesson(null);
                                                         setEditingModuleIdx(null);
+                                                        setAutoDuration(false);
+                                                        setDetectedVideoDuration(null);
                                                         toast.success('Đã xóa chương');
                                                     } catch (e) {
                                                         toast.error(e instanceof Error ? e.message : 'Xóa chương thất bại');
@@ -545,13 +673,20 @@ const ContentEditor: React.FC = () => {
                                                 <div
                                                     key={lesson.id}
                                                     onClick={() => {
-                                                        setEditingLesson({ mIdx, lIdx });
-                                                        setEditingModuleIdx(null);
+                                                        if ((lesson as any).type === 'quiz') {
+                                                            setSelectedQuizId((lesson as any).quizId);
+                                                            setQuizModalOpen(true);
+                                                        } else {
+                                                            setEditingLesson({ mIdx, lIdx });
+                                                            setEditingModuleIdx(null);
+                                                            setAutoDuration(false); // Reset when switching lessons
+                                                            setDetectedVideoDuration(null); // Reset detected video duration
+                                                        }
                                                     }}
                                                     className={`bg-white p-6 rounded-2xl border transition-all cursor-pointer group/lesson flex items-center justify-between ${editingLesson?.mIdx === mIdx && editingLesson?.lIdx === lIdx ? 'border-amber-500 ring-4 ring-amber-500/5 shadow-md' : 'border-gray-100 hover:border-amber-200'}`}
                                                 >
-                                                    <div className="flex items-center gap-5 pr-4 flex-1">
-                                                        <div className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-colors ${editingLesson?.mIdx === mIdx && editingLesson?.lIdx === lIdx ? 'bg-amber-600 text-white' : 'bg-gray-50 text-gray-400 group-hover/lesson:bg-amber-50 group-hover/lesson:text-amber-500'}`}>
+                                                    <div className="flex items-center gap-5 pr-4 flex-1 min-w-0">
+                                                        <div className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-colors flex-shrink-0 ${editingLesson?.mIdx === mIdx && editingLesson?.lIdx === lIdx ? 'bg-amber-600 text-white' : (lesson as any).type === 'quiz' ? 'bg-indigo-100 text-indigo-600 group-hover/lesson:bg-indigo-600 group-hover/lesson:text-white' : 'bg-gray-50 text-gray-400 group-hover/lesson:bg-amber-50 group-hover/lesson:text-amber-500'}`}>
                                                             {(lesson as any).type === 'video' ? <Video size={20} /> :
                                                                 (lesson as any).type === 'audio' ? <Music size={20} /> :
                                                                     (lesson as any).type === 'text' ? <FileText size={20} /> :
@@ -559,11 +694,14 @@ const ContentEditor: React.FC = () => {
                                                                             (lesson as any).type === 'pdf' ? <FileText size={20} className="text-red-500" /> :
                                                                                 <FileIcon size={20} />}
                                                         </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <h4 className="font-bold text-gray-900 group-hover/lesson:text-amber-600 transition-colors truncate">{lesson.title}</h4>
-                                                            <div className="flex items-center gap-3 mt-1">
-                                                                <span className="text-[10px] font-black text-gray-400 uppercase">{lesson.duration}</span>
+                                                        <div className="flex-1 min-w-0 overflow-hidden">
+                                                            <h4 className="font-bold text-gray-900 group-hover/lesson:text-amber-600 transition-colors truncate w-full block">{lesson.title}</h4>
+                                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                                <span className="text-[10px] font-black text-gray-400 uppercase whitespace-nowrap">{lesson.duration}</span>
                                                                 {lesson.isPreview && <span className="text-[10px] font-black text-emerald-500 px-1.5 py-0.5 bg-emerald-50 rounded uppercase">Xem trước</span>}
+                                                                {(lesson as any).type === 'quiz' && (lesson as any).status === 'draft' && (
+                                                                    <span className="text-[10px] font-black text-gray-500 px-1.5 py-0.5 bg-gray-100 rounded uppercase">Bản nháp</span>
+                                                                )}
                                                                 {lesson.attachments && lesson.attachments.length > 0 && (
                                                                     <span className="text-[10px] font-bold text-blue-500 flex items-center gap-1">
                                                                         <FileIcon size={10} /> {lesson.attachments.length} tài liệu
@@ -573,29 +711,61 @@ const ContentEditor: React.FC = () => {
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            className="p-2 cursor-pointer text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/lesson:opacity-100"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const run = async () => {
-                                                                    try {
-                                                                        await teacherService.deleteLecture(String(lesson.id));
-                                                                        const newCurr = [...curriculum];
-                                                                        newCurr[mIdx].lessons = newCurr[mIdx].lessons.filter(l => l.id !== lesson.id);
-                                                                        setCurriculum(newCurr);
-                                                                        if (editingLesson?.mIdx === mIdx && editingLesson?.lIdx === lIdx) setEditingLesson(null);
-                                                                        toast.success('Đã xóa bài giảng');
-                                                                    } catch (err) {
-                                                                        toast.error(err instanceof Error ? err.message : 'Xóa bài giảng thất bại');
-                                                                    }
-                                                                };
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        {(lesson as any).type !== 'quiz' && (
+                                                            <>
+                                                                <button
+                                                                    className="p-2 cursor-pointer text-gray-300 hover:text-purple-500 transition-colors opacity-0 group-hover/lesson:opacity-100 flex-shrink-0"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const run = async () => {
+                                                                            try {
+                                                                                toast.loading('Đang lưu bài giảng...', { id: 'ingest' });
+                                                                                await saveLectureBeforeIngest(lesson, lIdx);
+                                                                                toast.loading('Đang ingest lecture cho AI...', { id: 'ingest' });
+                                                                                const result = await teacherService.ingestLecture(lesson.id);
+                                                                                toast.dismiss('ingest');
+                                                                                if (result.status === 'skipped') {
+                                                                                    toast.success('Nội dung chưa thay đổi, bỏ qua ingest');
+                                                                                } else {
+                                                                                    toast.success(`Đã ingest thành công: ${result.chunks} chunks`);
+                                                                                }
+                                                                            } catch (err) {
+                                                                                toast.dismiss('ingest');
+                                                                                toast.error(err instanceof Error ? err.message : 'Ingest thất bại');
+                                                                            }
+                                                                        };
 
-                                                                run();
-                                                            }}
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
+                                                                        run();
+                                                                    }}
+                                                                    title="Ingest AI"
+                                                                >
+                                                                    <Zap size={16} />
+                                                                </button>
+                                                                <button
+                                                                    className="p-2 cursor-pointer text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/lesson:opacity-100 flex-shrink-0"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const run = async () => {
+                                                                            try {
+                                                                                await teacherService.deleteLecture(String(lesson.id));
+                                                                                const newCurr = [...curriculum];
+                                                                                newCurr[mIdx].lessons = newCurr[mIdx].lessons.filter(l => l.id !== lesson.id);
+                                                                                setCurriculum(newCurr);
+                                                                                if (editingLesson?.mIdx === mIdx && editingLesson?.lIdx === lIdx) setEditingLesson(null);
+                                                                                toast.success('Đã xóa bài giảng');
+                                                                            } catch (err) {
+                                                                                toast.error(err instanceof Error ? err.message : 'Xóa bài giảng thất bại');
+                                                                            }
+                                                                        };
+
+                                                                        run();
+                                                                    }}
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </>
+                                                        )}
                                                         <div className="p-2 cursor-pointer text-gray-300">
                                                             <ChevronDown size={14} className="-rotate-90" />
                                                         </div>
@@ -612,15 +782,8 @@ const ContentEditor: React.FC = () => {
                                                     + Video
                                                 </button>
                                                 <button
-                                                    onClick={() => addLesson(mIdx, 'text')}
-                                                    className="flex-1 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-black text-[10px] uppercase tracking-widest hover:border-amber-300 hover:text-amber-600 hover:bg-white transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <FileText size={16} />
-                                                    + Văn bản
-                                                </button>
-                                                <button
-                                                    onClick={() => addLesson(mIdx, 'quiz')}
-                                                    className="flex-1 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-black text-[10px] uppercase tracking-widest hover:border-emerald-300 hover:text-emerald-600 hover:bg-white transition-all flex items-center justify-center gap-2"
+                                                    onClick={() => navigate(`/teacher/quizzes?courseId=${id}&chapterId=${module.id}`)}
+                                                    className="flex-1 py-4 border-2 border-dashed border-purple-200 rounded-2xl text-purple-500 font-black text-[10px] uppercase tracking-widest hover:border-purple-500 hover:text-white hover:bg-purple-500 transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-purple-200"
                                                 >
                                                     <Layout size={16} />
                                                     + Quiz
@@ -729,43 +892,86 @@ const ContentEditor: React.FC = () => {
 
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <label className="text-md font-bold text-gray-400 ml-1">Thời lượng (m:s)</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="text-md font-bold text-gray-400 ml-1">Thời lượng</label>
+                                                        {autoDuration && (
+                                                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                                                ⏱️ Auto
+                                                            </span>
+                                                        )}
+                                                        {detectedVideoDuration && (
+                                                            <span className="text-[10px] font-medium text-gray-500">
+                                                                Video thực: {formatDurationFromSeconds(detectedVideoDuration)}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     {(() => {
                                                         const raw = String(currentLesson.duration || '00:00');
-                                                        const m = raw.match(/^(\d{1,3}):(\d{1,2})$/);
-                                                        const mm = m ? Math.max(0, Math.min(999, Number(m[1]) || 0)) : 0;
-                                                        const ss = m ? Math.max(0, Math.min(59, Number(m[2]) || 0)) : 0;
-                                                        const minuteOptions = Array.from({ length: 181 }, (_, i) => i);
-                                                        const secondOptions = Array.from({ length: 60 }, (_, i) => i);
-
-                                                        const set = (nextMm: number, nextSs: number) => {
-                                                            const safeMm = Math.max(0, Math.min(999, nextMm));
-                                                            const safeSs = Math.max(0, Math.min(59, nextSs));
-                                                            updateCurrentLesson({
-                                                                duration: `${String(safeMm).padStart(2, '0')}:${String(safeSs).padStart(2, '0')}`,
-                                                            });
+                                                        const setDuration = (value: string) => {
+                                                            // Auto-format: convert "130" to "02:10", "5" to "00:05"
+                                                            let formatted = value;
+                                                            if (/^\d+$/.test(value)) {
+                                                                const seconds = Number(value);
+                                                                const m = Math.floor(seconds / 60);
+                                                                const s = seconds % 60;
+                                                                formatted = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                                                            }
+                                                            // Validate format mm:ss
+                                                            const match = formatted.match(/^(\d{1,3}):(\d{1,2})$/);
+                                                            if (match) {
+                                                                const mm = Math.max(0, Math.min(999, Number(match[1])));
+                                                                const ss = Math.max(0, Math.min(59, Number(match[2])));
+                                                                formatted = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+                                                            }
+                                                            updateCurrentLesson({ duration: formatted });
+                                                            setAutoDuration(false);
                                                         };
 
+                                                        // Parse current duration to seconds for comparison
+                                                        const currentDurationSeconds = (() => {
+                                                            const match = raw.match(/^(\d{1,3}):(\d{1,2})$/);
+                                                            if (!match) return 0;
+                                                            return Number(match[1]) * 60 + Number(match[2]);
+                                                        })();
+
+                                                        // Check if manual duration is lower than detected video duration
+                                                        const isDurationLowerThanVideo = detectedVideoDuration && currentDurationSeconds < detectedVideoDuration && !autoDuration;
+
+                                                        const presets = [
+                                                            { label: '5m', value: '05:00' },
+                                                            { label: '10m', value: '10:00' },
+                                                            { label: '15m', value: '15:00' },
+                                                            { label: '30m', value: '30:00' },
+                                                            { label: '1h', value: '60:00' },
+                                                        ];
+
                                                         return (
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                <select
-                                                                    className="w-full px-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500  text-gray-900 transition-all text-center"
-                                                                    value={mm}
-                                                                    onChange={(e) => set(Number(e.target.value), ss)}
-                                                                >
-                                                                    {minuteOptions.map((v) => (
-                                                                        <option key={v} value={v}>{String(v).padStart(2, '0')} m</option>
+                                                            <div className="space-y-2">
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type="text"
+                                                                        className={`w-full px-4 py-4 bg-gray-50 border rounded-2xl outline-none focus:border-amber-500 text-gray-900 transition-all text-center font-mono ${autoDuration ? 'border-emerald-200 bg-emerald-50/30' : isDurationLowerThanVideo ? 'border-red-300 bg-red-50/30' : 'border-gray-100'}`}
+                                                                        value={raw}
+                                                                        onChange={(e) => setDuration(e.target.value)}
+                                                                        placeholder="mm:ss"
+                                                                    />
+                                                                    {isDurationLowerThanVideo && (
+                                                                        <div className="absolute -bottom-5 left-0 right-0 text-[10px] font-bold text-red-600 text-center">
+                                                                            ⚠️ Thấp hơn video thực tế
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex gap-2 flex-wrap">
+                                                                    {presets.map((preset) => (
+                                                                        <button
+                                                                            key={preset.value}
+                                                                            onClick={() => setDuration(preset.value)}
+                                                                            className="px-3 py-1.5 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-amber-100 hover:text-amber-700 rounded-lg transition-all"
+                                                                        >
+                                                                            {preset.label}
+                                                                        </button>
                                                                     ))}
-                                                                </select>
-                                                                <select
-                                                                    className="w-full px-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500  text-gray-900 transition-all text-center"
-                                                                    value={ss}
-                                                                    onChange={(e) => set(mm, Number(e.target.value))}
-                                                                >
-                                                                    {secondOptions.map((v) => (
-                                                                        <option key={v} value={v}>{String(v).padStart(2, '0')} s</option>
-                                                                    ))}
-                                                                </select>
+                                                                </div>
                                                             </div>
                                                         );
                                                     })()}
@@ -780,86 +986,6 @@ const ContentEditor: React.FC = () => {
                                                         {currentLesson.isPreview ? 'Công khai' : 'Riêng tư'}
                                                     </button>
                                                 </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <label className="text-md font-bold text-gray-400 ml-1">Loại bài giảng</label>
-                                                <select
-                                                    className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 font-bold text-gray-900 transition-all"
-                                                    value={String((currentLesson as any).type || 'video')}
-                                                    onChange={(e) => updateCurrentLesson({ type: e.target.value } as any)}
-                                                >
-                                                    <option value="video">Video</option>
-                                                    <option value="audio">Audio</option>
-                                                    <option value="pdf">PDF</option>
-                                                    <option value="text">Văn bản (HTML)</option>
-                                                    <option value="quiz">Bài kiểm tra</option>
-                                                    <option value="file">File</option>
-                                                </select>
-                                            </div>
-
-
-                                            <div className="space-y-3 pt-4 border-t border-gray-50">
-                                                <div className="flex items-center justify-between ml-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <FileText size={16} className="text-amber-500" />
-                                                        <label className="text-[11px] font-bold text-gray-900 uppercase tracking-widest">Nội dung chi tiết (Văn bản/HTML)</label>
-                                                    </div>
-                                                    <span className="text-[9px] font-bold text-gray-400 italic">Có thể để trống</span>
-                                                </div>
-                                                <div className="bg-gray-50 border border-gray-100 rounded-3xl overflow-hidden focus-within:ring-4 focus-within:ring-amber-500/5 focus-within:border-amber-500 transition-all">
-                                                    <ReactQuill
-                                                        theme="snow"
-                                                        value={String((currentLesson as any).content || '')}
-                                                        onChange={(val: string) => updateCurrentLesson({ content: val } as any)}
-                                                        className="quill-content-editor-unified"
-                                                        placeholder=""
-                                                    />
-                                                </div>
-                                                <style>{`
-                                                    .quill-content-editor-unified .ql-container {
-                                                        min-height: 250px;
-                                                        max-height: 650px;
-                                                        font-family: inherit;
-                                                        border: none !important;
-                                                        display: flex;
-                                                        flex-direction: column;
-                                                    }
-                                                    .quill-content-editor-unified .ql-editor {
-                                                        flex: 1;
-                                                        overflow-y: auto !important;
-                                                        padding: 2rem !important;
-                                                        font-size: 1rem !important;
-                                                        line-height: 1.7 !important;
-                                                        color: #374151 !important;
-                                                    }
-                                                    /* Custom scrollbar for Quill */
-                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar {
-                                                        width: 6px;
-                                                    }
-                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-track {
-                                                        background: #f9fafb;
-                                                    }
-                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-thumb {
-                                                        background: #e5e7eb;
-                                                        border-radius: 10px;
-                                                    }
-                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-thumb:hover {
-                                                        background: #d1d5db;
-                                                    }
-                                                    .quill-content-editor-unified .ql-toolbar {
-                                                        border: none !important;
-                                                        border-bottom: 1px solid #f3f4f6 !important;
-                                                        background: #fff;
-                                                        padding: 0.75rem !important;
-                                                    }
-                                                    .quill-content-editor-unified .ql-editor.ql-blank::before {
-                                                        font-style: normal !important;
-                                                        color: #9ca3af !important;
-                                                        font-size: 0.875rem !important;
-                                                        left: 2rem !important;
-                                                    }
-                                                `}</style>
                                             </div>
 
                                             <div className="space-y-2">
@@ -992,6 +1118,69 @@ const ContentEditor: React.FC = () => {
                                                     </div>
                                                 )}
                                             </div>
+
+                                            <div className="space-y-3 pt-4 border-t border-gray-50">
+                                                <div className="flex items-center justify-between ml-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileText size={16} className="text-amber-500" />
+                                                        <label className="text-[11px] font-bold text-gray-900 uppercase tracking-widest">Nội dung chi tiết (Văn bản/HTML)</label>
+                                                    </div>
+                                                    <span className="text-[9px] font-bold text-gray-400 italic">Có thể để trống</span>
+                                                </div>
+                                                <div className="bg-gray-50 border border-gray-100 rounded-3xl overflow-hidden focus-within:ring-4 focus-within:ring-amber-500/5 focus-within:border-amber-500 transition-all">
+                                                    <ReactQuill
+                                                        theme="snow"
+                                                        value={String((currentLesson as any).content || '')}
+                                                        onChange={(val: string) => updateCurrentLesson({ content: val } as any)}
+                                                        className="quill-content-editor-unified"
+                                                        placeholder=""
+                                                    />
+                                                </div>
+                                                <style>{`
+                                                    .quill-content-editor-unified .ql-container {
+                                                        min-height: 250px;
+                                                        max-height: 650px;
+                                                        font-family: inherit;
+                                                        border: none !important;
+                                                        display: flex;
+                                                        flex-direction: column;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor {
+                                                        flex: 1;
+                                                        overflow-y: auto !important;
+                                                        padding: 2rem !important;
+                                                        font-size: 1rem !important;
+                                                        line-height: 1.7 !important;
+                                                        color: #374151 !important;
+                                                    }
+                                                    /* Custom scrollbar for Quill */
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar {
+                                                        width: 6px;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-track {
+                                                        background: #f9fafb;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-thumb {
+                                                        background: #e5e7eb;
+                                                        border-radius: 10px;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor::-webkit-scrollbar-thumb:hover {
+                                                        background: #d1d5db;
+                                                    }
+                                                    .quill-content-editor-unified .ql-toolbar {
+                                                        border: none !important;
+                                                        border-bottom: 1px solid #f3f4f6 !important;
+                                                        background: #fff;
+                                                        padding: 0.75rem !important;
+                                                    }
+                                                    .quill-content-editor-unified .ql-editor.ql-blank::before {
+                                                        font-style: normal !important;
+                                                        color: #9ca3af !important;
+                                                        font-size: 0.875rem !important;
+                                                        left: 2rem !important;
+                                                    }
+                                                `}</style>
+                                            </div>
                                         </div>
 
                                         {/* Attachments Section */}
@@ -1081,6 +1270,7 @@ const ContentEditor: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
+
                                     </div>
 
                                     <div className="p-8 bg-gray-50 flex items-center justify-between border-t border-gray-100">
@@ -1171,6 +1361,36 @@ const ContentEditor: React.FC = () => {
                             >
                                 <X size={24} />
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Quiz Editor Modal (Drawer style like lecture editor) */}
+                {quizModalOpen && selectedQuizId && (
+                    <div className="fixed inset-0 z-100 flex justify-end bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="w-full md:w-[600px] lg:w-[800px] h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
+                            {/* Editor Header */}
+                            <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600">
+                                        <Layout size={18} />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-900 tracking-tight">Chỉnh sửa Quiz</h3>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setQuizModalOpen(false);
+                                        setSelectedQuizId(null);
+                                    }}
+                                    className="cursor-pointer p-2 text-gray-400 hover:text-gray-900 transition-colors"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto">
+                                <QuizQuestionEditor quizId={selectedQuizId} isDrawer={true} />
+                            </div>
                         </div>
                     </div>
                 )}

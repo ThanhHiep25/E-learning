@@ -1,5 +1,7 @@
 import { apiRequest } from "./api";
 
+export type CourseStatus = 'draft' | 'pending_review' | 'published' | 'rejected';
+
 export type BackendTeacherCourse = {
   id: string | number;
   title: string;
@@ -9,11 +11,21 @@ export type BackendTeacherCourse = {
   level?: string;
   rating?: number;
   published?: boolean;
+  status?: CourseStatus;
+  rejectionReason?: string | null;
+  reviewedAt?: string | null;
   imageUrl?: string;
   categoryId?: number | null;
   createdBy?: string | number;
   createdAt?: string;
   updatedAt?: string;
+  // Duration settings
+  durationType?: 'lifetime' | 'fixed' | 'subscription';
+  durationValue?: number;
+  durationUnit?: 'days' | 'months' | 'years';
+  renewalDiscountPercent?: number;
+  gracePeriodDays?: number;
+  isRequired?: boolean;
 };
 
 export type BackendCourseEnrollment = {
@@ -52,6 +64,7 @@ export type BackendTeacherChapter = {
   order?: number | null;
   courseId: string | number;
   Lectures?: BackendTeacherLecture[];
+  quizzes?: BackendTeacherQuiz[];  // ← Thêm dòng này
   createdAt?: string;
   updatedAt?: string;
 };
@@ -85,10 +98,12 @@ export type BackendTeacherQuiz = {
   endTime?: string | null;
   showResults?: boolean;
   antiCheat?: boolean;
+  status?: 'draft' | 'published';
   questions?: BackendTeacherQuestion[];
 };
 
 export type BackendTeacherQuizDetail = BackendTeacherQuiz & {
+  status?: 'draft' | 'published';
   course?: {
     id: string | number;
     title: string;
@@ -108,6 +123,7 @@ export type CreateTeacherQuizInput = {
   antiCheat?: boolean;
   type?: 'course' | 'placement';
   categoryId?: number | string | null;
+  chapterId?: string | number;
 };
 
 export type CreateTeacherQuestionInput = {
@@ -227,13 +243,19 @@ export type TeacherStatisticsResponse = {
     color?: string; // Opt-in for frontend coloring
   }[];
   ranking: {
-    rank: number;
-    studentName: string;
-    highestScore: number;
-    courseProgress: number;
-    achievement: string;
+    // User fields (from User model)
+    id?: string | number;
+    name?: string;
+    username?: string;
+    fullName?: string;
     email?: string;
     avatar?: string;
+    // Stats fields
+    averageScore?: number | string;
+    highestScore?: number;
+    courseProgress?: number;
+    achievement?: string;
+    rank?: number;
   }[];
   aiSuggestions: {
     type: string;
@@ -260,6 +282,16 @@ export type BackendOwnerCourse = {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+  // Duration settings
+  durationType?: 'lifetime' | 'fixed' | 'subscription';
+  durationValue?: number | null;
+  durationUnit?: 'days' | 'months' | 'years' | null;
+  renewalDiscountPercent?: number | null;
+  gracePeriodDays?: number | null;
+  // Course content
+  chapters?: any[];
+  totalLessons?: number | null;
+  students?: number | null;
 };
 
 export type CreateTeacherCourseInput = {
@@ -274,6 +306,13 @@ export type CreateTeacherCourseInput = {
   willLearn?: string[];
   requirements?: string[];
   tags?: string[];
+  // Duration settings for expiration system
+  durationType?: 'lifetime' | 'fixed' | 'subscription';
+  durationValue?: number;
+  durationUnit?: 'days' | 'months' | 'years';
+  renewalDiscountPercent?: number;
+  gracePeriodDays?: number;
+  isRequired?: boolean;
 };
 
 export const teacherService = {
@@ -331,6 +370,13 @@ export const teacherService = {
           willLearn: input.willLearn || [],
           requirements: input.requirements || [],
           tags: input.tags || [],
+          isRequired: Boolean(input.isRequired),
+          // Duration settings
+          durationType: input.durationType,
+          durationValue: input.durationValue,
+          durationUnit: input.durationUnit,
+          renewalDiscountPercent: input.renewalDiscountPercent,
+          gracePeriodDays: input.gracePeriodDays,
         }),
       },
     );
@@ -355,9 +401,16 @@ export const teacherService = {
           published: input.published,
           level: input.level,
           duration: input.duration,
-          willLearn: input.willLearn,
-          requirements: input.requirements,
-          tags: input.tags,
+          // Only send array fields if they are defined
+          ...(input.willLearn !== undefined && { willLearn: input.willLearn }),
+          ...(input.requirements !== undefined && { requirements: input.requirements }),
+          ...(input.tags !== undefined && { tags: input.tags }),
+          // Duration settings
+          ...(input.durationType !== undefined && { durationType: input.durationType }),
+          ...(input.durationValue !== undefined && { durationValue: input.durationValue }),
+          ...(input.durationUnit !== undefined && { durationUnit: input.durationUnit }),
+          ...(input.renewalDiscountPercent !== undefined && { renewalDiscountPercent: input.renewalDiscountPercent }),
+          ...(input.gracePeriodDays !== undefined && { gracePeriodDays: input.gracePeriodDays }),
         }),
       },
     );
@@ -369,6 +422,16 @@ export const teacherService = {
     await apiRequest<unknown>(`teacher/courses/${courseId}`, {
       method: "DELETE",
     });
+  },
+
+  async submitCourseForReview(courseId: string): Promise<{ message: string; course: BackendTeacherCourse }> {
+    const data = await apiRequest<{ message: string; course: BackendTeacherCourse }>(
+      `teacher/courses/${courseId}/submit-review`,
+      {
+        method: "POST",
+      },
+    );
+    return { message: data.message, course: data.course };
   },
 
   async getCourseContent(
@@ -396,10 +459,10 @@ export const teacherService = {
   },
 
   async createQuiz(
-    courseId: string | number | null,
+    courseId: string | number,
     input: CreateTeacherQuizInput,
   ): Promise<BackendTeacherQuiz> {
-    const url = courseId ? `teacher/courses/${courseId}/quizzes` : `teacher/placement-quizzes`;
+    const url = `teacher/courses/${courseId}/quizzes`;
     const data = await apiRequest<{ quiz: BackendTeacherQuiz }>(
       url,
       {
@@ -416,6 +479,7 @@ export const teacherService = {
           antiCheat: input.antiCheat,
           type: input.type,
           categoryId: input.categoryId,
+          chapterId: input.chapterId,
         }),
       },
     );
@@ -454,16 +518,6 @@ export const teacherService = {
     return data.quiz;
   },
 
-  async getPlacementQuizzes(): Promise<BackendTeacherQuiz[]> {
-    const data = await apiRequest<{ quizzes: BackendTeacherQuiz[] }>(
-      "teacher/placement-quizzes",
-      {
-        method: "GET",
-      },
-    );
-    return data.quizzes || [];
-  },
-
   async getQuizAttempts(
     quizId: string | number,
   ): Promise<QuizAttemptsResponse> {
@@ -479,6 +533,157 @@ export const teacherService = {
     await apiRequest<unknown>(`teacher/attempts/${attemptId}`, {
       method: "DELETE",
     });
+  },
+
+  // AI Quiz Generation APIs
+  async generateAIQuiz(
+    lectureId: string | number,
+    options: {
+      count?: number;
+      difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';
+      questionTypes?: string[];
+    } = {}
+  ): Promise<{ questions: BackendTeacherQuestion[]; content?: string }> {
+    const data = await apiRequest<{ success: boolean; data: { questions: BackendTeacherQuestion[]; content?: string } }>(
+      `teacher/ai/generate-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          lectureId: Number(lectureId),
+          options: {
+            count: options.count || 10,
+            difficulty: options.difficulty || 'mixed',
+            questionTypes: options.questionTypes || ['multiple_choice'],
+          },
+        }),
+      },
+    );
+    return data.data;
+  },
+
+  async generateRAGQuiz(
+    courseId: string | number,
+    options: {
+      scope?: 'course' | 'chapter' | 'lecture' | 'multi';
+      lectureIds?: (string | number)[];
+      chapterId?: string | number;
+      count?: number;
+      difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';
+      questionTypes?: string[];
+    } = {}
+  ): Promise<{ questions: BackendTeacherQuestion[]; metadata: any }> {
+    const data = await apiRequest<{ success: boolean; data: { questions: BackendTeacherQuestion[]; metadata: any } }>(
+      `teacher/ai/generate-rag-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          courseId: Number(courseId),
+          options: {
+            scope: options.scope || 'lecture',
+            lectureIds: options.lectureIds || [],
+            chapterId: options.chapterId,
+            questionCount: options.count || 10,
+            difficulty: options.difficulty || 'mixed',
+            questionTypes: options.questionTypes || ['multiple_choice'],
+          },
+        }),
+      },
+    );
+    return data.data;
+  },
+
+  async generateAndSaveRAGQuiz(
+    courseId: string | number,
+    quizData: {
+      title: string;
+      description?: string;
+      timeLimit?: number;
+      maxScore?: number;
+      passingScore?: number;
+    },
+    options: {
+      scope?: 'course' | 'chapter' | 'lecture' | 'multi';
+      lectureIds?: (string | number)[];
+      chapterId?: string | number;
+      count?: number;
+      difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';
+      questionTypes?: string[];
+    } = {}
+  ): Promise<{ quiz: BackendTeacherQuiz; questions: BackendTeacherQuestion[]; metadata: any }> {
+    const data = await apiRequest<{ quiz: BackendTeacherQuiz; questions: BackendTeacherQuestion[]; metadata: any }>(
+      `teacher/ai/generate-and-save-rag-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          courseId: Number(courseId),
+          quizData: {
+            title: quizData.title,
+            description: quizData.description,
+            timeLimit: quizData.timeLimit || 30,
+            maxScore: quizData.maxScore || 100,
+            passingScore: quizData.passingScore || 60,
+          },
+          options: {
+            scope: options.scope || 'lecture',
+            lectureIds: options.lectureIds || [],
+            chapterId: options.chapterId,
+            questionCount: options.count || 10,
+            difficulty: options.difficulty || 'mixed',
+            questionTypes: options.questionTypes || ['multiple_choice'],
+          },
+        }),
+      },
+    );
+    return data;
+  },
+
+  async generateAndSaveAIQuiz(
+    lectureId: string | number,
+    quizData: {
+      title: string;
+      description?: string;
+      timeLimit?: number;
+      maxScore?: number;
+      passingScore?: number;
+    },
+    options: {
+      count?: number;
+      difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';
+      questionTypes?: string[];
+    } = {}
+  ): Promise<{ quiz: BackendTeacherQuiz; questions: BackendTeacherQuestion[] }> {
+    const data = await apiRequest<{ success: boolean; data: { quiz: BackendTeacherQuiz; questions: BackendTeacherQuestion[] } }>(
+      `teacher/ai/generate-and-save-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          lectureId: Number(lectureId),
+          quizData: {
+            title: quizData.title,
+            description: quizData.description,
+            timeLimit: quizData.timeLimit || 30,
+            maxScore: quizData.maxScore || 100,
+            passingScore: quizData.passingScore || 60,
+          },
+          options: {
+            count: options.count || 10,
+            difficulty: options.difficulty || 'mixed',
+            questionTypes: options.questionTypes || ['multiple_choice'],
+          },
+        }),
+      },
+    );
+    return data.data;
+  },
+
+  async publishAIQuiz(quizId: string | number): Promise<{ quiz: BackendTeacherQuiz }> {
+    const data = await apiRequest<{ success: boolean; data: { quiz: BackendTeacherQuiz } }>(
+      `teacher/ai/quizzes/${quizId}/publish`,
+      {
+        method: "POST",
+      },
+    );
+    return data.data;
   },
 
   async getAttemptDetail(
@@ -528,6 +733,26 @@ export const teacherService = {
     });
   },
 
+  async gradeQuestion(attemptId: string | number, questionId: string | number, points: number, feedback?: string): Promise<void> {
+    await apiRequest<unknown>(
+      `teacher/attempts/${attemptId}/questions/${questionId}/grade`,
+      {
+        method: "POST",
+        body: JSON.stringify({ points, feedback }),
+      },
+    );
+  },
+
+  async getAttemptForGrading(attemptId: string | number): Promise<any> {
+    const data = await apiRequest<{ attempt: any }>(
+      `teacher/attempts/${attemptId}`,
+      {
+        method: "GET",
+      },
+    );
+    return data.attempt;
+  },
+
   async uploadQuizMedia(file: File): Promise<UploadQuizMediaResponse> {
     const form = new FormData();
     form.set("file", file);
@@ -555,10 +780,11 @@ export const teacherService = {
     order?: number;
   }): Promise<BackendTeacherChapter> {
     const data = await apiRequest<{ chapter: BackendTeacherChapter }>(
-      `teacher/courses/${params.courseId}/chapters`,
+      `teacher/chapters`,
       {
         method: "POST",
         body: JSON.stringify({
+          courseId: params.courseId,
           title: params.title,
           order: params.order,
         }),
@@ -698,5 +924,359 @@ export const teacherService = {
       },
     );
     return res;
+  },
+
+  // ==========================================
+  // AI TEACHER APIS
+  // ==========================================
+
+  async generateContent(params: {
+    lectureId: string | number;
+    prompt?: string;
+    type?: 'summary' | 'explanation' | 'examples' | 'key_points';
+  }): Promise<{ content: string; metadata: any }> {
+    const data = await apiRequest<{ success: boolean; data: { content: string; metadata: any } }>(
+      `teacher/ai/generate-content`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async generateExercises(params: {
+    courseId?: string | number;
+    lectureId?: string | number;
+    count?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    type?: 'practice' | 'homework' | 'revision';
+  }): Promise<{ exercises: any[]; metadata: any }> {
+    const data = await apiRequest<{ success: boolean; data: { exercises: any[]; metadata: any } }>(
+      `teacher/ai/generate-exercises`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async analyzeContentQuality(params: {
+    courseId?: string | number;
+    lectureId?: string | number;
+  }): Promise<{
+    quality: {
+      overall: number;
+      clarity: number;
+      completeness: number;
+      engagement: number;
+    };
+    suggestions: string[];
+    analysis: string;
+  }> {
+    const query = new URLSearchParams();
+    if (params.courseId) query.append('courseId', String(params.courseId));
+    if (params.lectureId) query.append('lectureId', String(params.lectureId));
+    
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/content-quality?${query.toString()}`,
+      {
+        method: "GET",
+      },
+    );
+    return data.data;
+  },
+
+  async getCourseAnalytics(courseId?: string | number): Promise<{
+    overview: {
+      totalStudents: number;
+      averageProgress: number;
+      averageScore: number;
+      completionRate: number;
+    };
+    engagement: {
+      activeStudents: number;
+      inactiveStudents: number;
+      averageTimeSpent: number;
+    };
+    performance: {
+      topPerformers: any[];
+      strugglingStudents: any[];
+      scoreDistribution: any[];
+    };
+    insights: string[];
+  }> {
+    const query = courseId ? `?courseId=${courseId}` : '';
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/course-analytics${query}`,
+      {
+        method: "GET",
+      },
+    );
+    return data.data;
+  },
+
+  async getQualityReport(courseId?: string | number): Promise<{
+    report: {
+      summary: string;
+      strengths: string[];
+      weaknesses: string[];
+      recommendations: string[];
+    };
+    generatedAt: string;
+  }> {
+    const query = courseId ? `?courseId=${courseId}` : '';
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/quality-report${query}`,
+      {
+        method: "GET",
+      },
+    );
+    return data.data;
+  },
+
+  async generateTeachingGuide(params: {
+    lectureId: string | number;
+    classDuration?: number;
+    classSize?: number;
+    teachingMode?: 'offline' | 'online' | 'hybrid';
+    studentLevel?: 'beginner' | 'intermediate' | 'advanced';
+  }): Promise<{
+    guide: {
+      title: string;
+      objectives: string[];
+      activities: any[];
+      materials: string[];
+      assessment: string;
+      timeline: any[];
+    };
+    metadata: any;
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/teaching-guide`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async generateStudentFeedback(params: {
+    courseId: string | number;
+    studentId: string | number;
+    type?: 'general' | 'specific' | 'improvement';
+    context?: string;
+  }): Promise<{
+    feedback: {
+      strengths: string[];
+      improvements: string[];
+      encouragement: string;
+      actionItems: string[];
+    };
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/student-feedback`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async generateExam(params: {
+    courseId: string | number;
+    coverage?: 'course' | 'chapter' | 'lecture';
+    chapterId?: string | number;
+    lectureId?: string | number;
+    duration?: number;
+    questionCount?: number;
+    difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';
+    includeAnswerKey?: boolean;
+  }): Promise<{
+    exam: {
+      title: string;
+      instructions: string;
+      questions: any[];
+      totalPoints: number;
+      duration: number;
+    };
+    answerKey?: {
+      answers: any[];
+      gradingNotes: string;
+    };
+    metadata: any;
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/generate-exam`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async generateTeachingMaterials(params: {
+    courseId: string | number;
+    chapterId?: string | number;
+    lectureId?: string | number;
+    type?: 'slides' | 'handout' | 'worksheet' | 'all';
+    format?: 'pptx' | 'pdf' | 'docx';
+  }): Promise<{
+    materials: {
+      slides?: { url: string; pages: number };
+      handout?: { url: string; pages: number };
+      worksheet?: { url: string; pages: number };
+    };
+    metadata: any;
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/teaching-materials`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async analyzeCourseDifficulty(courseId: string | number): Promise<{
+    analysis: {
+      overall: 'easy' | 'moderate' | 'challenging' | 'difficult';
+      breakdown: {
+        beginner: number;
+        intermediate: number;
+        advanced: number;
+      };
+      recommendations: string[];
+      comparedToAverage: string;
+    };
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/course-difficulty/${courseId}`,
+      {
+        method: "GET",
+      },
+    );
+    return data.data;
+  },
+
+  async generateCourseOutline(params: {
+    title: string;
+    description?: string;
+    targetAudience?: string;
+    duration?: string;
+    learningObjectives?: string[];
+  }): Promise<{
+    outline: {
+      title: string;
+      description: string;
+      chapters: any[];
+      estimatedDuration: string;
+      prerequisites: string[];
+    };
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/generate-course-outline`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async saveCourseOutline(params: {
+    outline: any;
+  }): Promise<{
+    courseId: string | number;
+    chaptersCreated: number;
+    lecturesCreated: number;
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/save-course-outline`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async generateAndSaveCourseOutline(params: {
+    title: string;
+    description?: string;
+    targetAudience?: string;
+    duration?: string;
+    learningObjectives?: string[];
+    saveToDatabase?: boolean;
+  }): Promise<{
+    outline: any;
+    courseId?: string | number;
+    chaptersCreated?: number;
+    lecturesCreated?: number;
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/generate-and-save-course-outline`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async triggerCourseContentGeneration(params: {
+    courseId: string | number;
+    options?: {
+      generateLectures?: boolean;
+      generateQuizzes?: boolean;
+      generateMaterials?: boolean;
+    };
+  }): Promise<{
+    jobId: string;
+    status: string;
+    estimatedTime: string;
+  }> {
+    const data = await apiRequest<{ success: boolean; data: any }>(
+      `teacher/ai/generate-course-content`,
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      },
+    );
+    return data.data;
+  },
+
+  async ingestLecture(lectureId: string | number): Promise<{
+    documentId: number;
+    status: string;
+    chunks?: number;
+  }> {
+    try {
+      console.log('Calling ingest API for lecture:', lectureId);
+      const data = await apiRequest<{
+        documentId: number;
+        status: string;
+        chunks?: number;
+      }>(
+        `teacher/ai/ingest/lecture/${lectureId}`,
+        {
+          method: "POST",
+        },
+      );
+      console.log('Ingest API response:', data);
+      if (!data) {
+        throw new Error('Ingest failed: No response from server');
+      }
+      return data;
+    } catch (error: any) {
+      console.error('Ingest API error:', error);
+      console.error('Error details:', error.message, error.status, error.payload);
+      throw error;
+    }
   },
 };

@@ -216,7 +216,7 @@ const ForumReports: React.FC = () => {
                                             </div>
                                             <div className="flex items-center gap-1.5">
                                                 <Clock size={14} />
-                                                <span>{format(new Date(report.createdAt), 'HH:mm dd/MM/yyyy', { locale: vi })}</span>
+                                                <span>{report.createdAt ? format(new Date(report.createdAt), 'HH:mm dd/MM/yyyy', { locale: vi }) : 'N/A'}</span>
                                             </div>
                                         </div>
 
@@ -337,7 +337,7 @@ const ForumReports: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <div className="font-bold text-sm text-slate-800">{report.topic.author?.name || `User #${report.topic.userId}`}</div>
-                                                        <div className="text-[10px] text-slate-400 font-medium">{format(new Date(report.topic.createdAt), 'dd MMMM, yyyy', { locale: vi })}</div>
+                                                        <div className="text-[10px] text-slate-400 font-medium">{report.topic.createdAt ? format(new Date(report.topic.createdAt), 'dd MMMM, yyyy', { locale: vi }) : 'N/A'}</div>
                                                     </div>
                                                 </div>
 

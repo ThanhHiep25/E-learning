@@ -3,9 +3,9 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar.tsx';
 import Header from './Header.tsx';
 import Footer from './Footer.tsx';
-import VirtualBot from '../common/VirtualBot';
 import AIChatModal from '../common/AIChatModal';
-import { ChevronUp, Phone } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { ChevronUp } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -20,8 +20,14 @@ const MainLayout: React.FC = () => {
         });
     };
 
+    const { user } = useAuth();
     const location = useLocation();
     const isAiChatPage = location.pathname === '/ai-chat';
+    const isLessonPlayer = location.pathname.includes('/lesson/');
+    const isMyLearning = location.pathname === '/my-learning';
+    const isCourseDashboard = location.pathname.includes('/course/') && location.pathname.includes('/dashboard');
+    const showFooter = !user && !isAiChatPage && !isLessonPlayer && !isMyLearning && !isCourseDashboard;
+    const showChatbot = !!user && !isAiChatPage && !isLessonPlayer;
 
     useEffect(() => {
         const handleScroll = () => {
@@ -55,34 +61,23 @@ const MainLayout: React.FC = () => {
                 <main className="flex-1 overflow-x-hidden">
                     <Outlet />
                 </main>
-                {!isAiChatPage && <Footer />}
+                {showFooter && <Footer />}
             </div>
             
             {/* AI Assistant */}
-            {!isAiChatPage && (
-                <>
-                    <AIChatModal isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-                    {/* Student Helper Tools (Only shown in MainLayout) */}
-                    <VirtualBot onChatToggle={() => setIsChatOpen(true)} />
-                </>
+            {showChatbot && (
+                <AIChatModal isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
             )}
 
-            {!isAiChatPage && (
+            {showChatbot && (
                 <>
-                    {/* Floating Contact Buttons */}
-                    <div className="fixed bottom-30 right-6 z-30 group">
-                        <div className="absolute -inset-2 bg-blue-400/20 rounded-full blur-xl group-hover:bg-blue-400/40 transition-all opacity-0 group-hover:opacity-100"></div>
-                        <div className="relative w-14 h-14 bg-blue-500 rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
-                            <img src="https://cdn.haitrieu.com/wp-content/uploads/2022/01/Logo-Zalo-Arc.png" alt="Zalo" className="w-8 h-8 object-contain mb-0.5" />
-                        </div>
-                    </div>
-
-                    <div className="fixed bottom-50 right-6 z-30 group">
-                        <div className="absolute -inset-2 bg-green-400/20 rounded-full blur-xl group-hover:bg-green-400/40 transition-all opacity-0 group-hover:opacity-100"></div>
-                        <div className="relative w-14 h-14 bg-green-500 rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
-                            <Phone size={24} />
-                        </div>
-                    </div>
+                    {/* AI Chat Floating Button */}
+                    <button
+                        onClick={() => setIsChatOpen(true)}
+                        className="fixed bottom-20 right-5 z-40 w-14 h-14 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-xl shadow-amber-500/30 border-2 border-white hover:scale-105 active:scale-95 transition-all"
+                    >
+                        <img src="/idea-bulb.png" alt="AI" className="w-6 h-6 object-contain" />
+                    </button>
 
                     {/* Scroll to top button */}
                     {showScrollTop && (
@@ -91,8 +86,8 @@ const MainLayout: React.FC = () => {
                             className="fixed bottom-6 right-6 z-30 group"
                         >
                             <div className="absolute -inset-2 bg-blue-400/20 rounded-full blur-xl group-hover:bg-blue-400/40 transition-all opacity-0 group-hover:opacity-100"></div>
-                            <div className="relative w-14 h-14 bg-blue-500/50 backdrop-blur-sm rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
-                                <ChevronUp size={24} />
+                            <div className="relative w-12 h-12 bg-blue-500/50 backdrop-blur-sm rounded-full flex flex-col items-center justify-center text-white font-bold text-[10px] shadow-xl cursor-pointer border-2 border-white hover:scale-110 active:scale-95 transition-all">
+                                <ChevronUp size={20} />
                             </div>
                         </button>
                     )}

@@ -5,7 +5,7 @@ import type { ForumType } from '../services/forum.service';
 import {
     ChevronLeft, Send, Book, Globe,
     MessageCircle, AlertCircle, HelpCircle,
-    ShieldOff, X
+    ShieldOff
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -46,11 +46,32 @@ const NewTopic: React.FC = () => {
 
         try {
             setLoading(true);
-            const topic = await forumService.createTopic({
-                ...formData,
-                courseId: formData.courseId || null,
-                lectureId: formData.lectureId || null
-            });
+            
+            // Build request body - chỉ thêm courseId/lectureId khi cần thiết
+            // Backend validation: optional() chỉ bỏ qua undefined, không phải null
+            const requestBody: any = {
+                title: formData.title.trim(),
+                content: formData.content.trim(),
+                type: formData.type,
+            };
+            
+            // Chỉ thêm courseId khi type là 'course' hoặc 'lecture' và có giá trị
+            if (formData.type !== 'global' && formData.courseId) {
+                const parsedCourseId = parseInt(formData.courseId, 10);
+                if (parsedCourseId > 0) {
+                    requestBody.courseId = parsedCourseId;
+                }
+            }
+            
+            // Chỉ thêm lectureId khi type là 'lecture' và có giá trị
+            if (formData.type === 'lecture' && formData.lectureId) {
+                const parsedLectureId = parseInt(formData.lectureId, 10);
+                if (parsedLectureId > 0) {
+                    requestBody.lectureId = parsedLectureId;
+                }
+            }
+            
+            const topic = await forumService.createTopic(requestBody);
             toast.success('Chủ đề đã được tạo thành công!');
             navigate(`/forum/topic/${topic.id}`);
         } catch (error: any) {
@@ -62,7 +83,7 @@ const NewTopic: React.FC = () => {
                     banReason: error.payload.banReason || 'Vi phạm tiêu chuẩn cộng đồng'
                 });
             } else {
-                toast.error('Có lỗi xảy ra khi tạo chủ đề');
+                toast.error(error.message || 'Có lỗi xảy ra khi tạo chủ đề');
             }
         } finally {
             setLoading(false);

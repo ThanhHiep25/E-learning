@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-    Bell, Check, BookOpen, Clock,
+    Bell, Check, XCircle, BookOpen, Clock,
     CreditCard, Info, Megaphone, AlertCircle, MessageSquare,
-    ChevronRight
+    ChevronRight, Award, GraduationCap, BookMarked, Zap, Settings
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
 import { safeFormatDistanceToNow } from '../../utils/dateUtils';
@@ -28,10 +28,23 @@ const NotificationBell: React.FC = () => {
         switch (type) {
             case 'enrollment': return <BookOpen size={16} className="text-blue-500" />;
             case 'quiz': return <Clock size={16} className="text-emerald-500" />;
+            case 'quiz_reminder': return <Zap size={16} className="text-orange-500" />;
             case 'payment': return <CreditCard size={16} className="text-amber-500" />;
+            case 'review': return <MessageSquare size={16} className="text-purple-500" />;
+            case 'review_reply': return <MessageSquare size={16} className="text-violet-500" />;
+            case 'certificate': return <Award size={16} className="text-yellow-500" />;
+            case 'course_approved': return <Check size={16} className="text-green-500" />;
+            case 'course_rejected': return <XCircle size={16} className="text-red-500" />;
+            case 'forum_reply': return <MessageSquare size={16} className="text-cyan-500" />;
             case 'course_update': return <Info size={16} className="text-indigo-500" />;
+            case 'chapter_complete': return <BookMarked size={16} className="text-teal-500" />;
             case 'announcement': return <Megaphone size={16} className="text-rose-500" />;
             case 'forum': return <MessageSquare size={16} className="text-orange-500" />;
+            case 'forum_ban': return <AlertCircle size={16} className="text-red-500" />;
+            case 'forum_reaction': return <MessageSquare size={16} className="text-pink-500" />;
+            case 'report_resolution': return <Check size={16} className="text-green-500" />;
+            case 'study_reminder': return <GraduationCap size={16} className="text-cyan-500" />;
+            case 'system': return <Settings size={16} className="text-gray-500" />;
             default: return <AlertCircle size={16} className="text-gray-500" />;
         }
     };
@@ -42,23 +55,146 @@ const NotificationBell: React.FC = () => {
         }
         setIsOpen(false);
 
-        // Navigation logic based on payload
-        if (notification.payload) {
-            const { courseId, quizId, lectureId, updateType, topicId } = notification.payload;
+        // Navigation logic based on type and payload
+        const { type, payload = {} } = notification;
+        const { courseId, quizId, lectureId, updateType, topicId, reviewId, paymentId, enrollmentId, certificateId, chapterId, forumPostId } = payload;
 
-            if (quizId) {
-                // If it's a quiz notification, go to quiz or my-learning/tests
-                navigate(`/quiz/${quizId}`);
-            } else if (notification.type === 'forum' && topicId) { // Added forum handling
-                navigate(`/forum/topic/${topicId}`);
-            } else if (courseId) {
-                // If it's an update for a course
-                if (updateType === 'new_lecture' && lectureId) {
-                    navigate(`/course/${courseId}/lesson/${lectureId}`);
+        switch (type) {
+            case 'quiz':
+            case 'quiz_reminder':
+                if (quizId) {
+                    navigate(`/quiz/${quizId}`);
+                } else if (courseId) {
+                    navigate(`/course/${courseId}/quiz`);
                 } else {
-                    navigate(`/course/${courseId}`);
+                    navigate('/my-courses');
                 }
-            }
+                break;
+
+            case 'enrollment':
+                if (courseId) {
+                    navigate(`/course/${courseId}/lesson`);
+                } else if (enrollmentId) {
+                    navigate('/my-courses');
+                }
+                break;
+
+            case 'payment':
+                if (paymentId) {
+                    navigate('/orders');
+                } else {
+                    navigate('/courses');
+                }
+                break;
+
+            case 'review':
+            case 'review_reply':
+                if (courseId) {
+                    // If reviewId provided, could scroll to specific review in future
+                    navigate(`/course/${courseId}?tab=reviews${reviewId ? `&reviewId=${reviewId}` : ''}`);
+                }
+                break;
+
+            case 'course_approved':
+            case 'course_rejected':
+                if (courseId) {
+                    navigate(`/teacher/courses/${courseId}`);
+                } else {
+                    navigate('/teacher/courses');
+                }
+                break;
+
+            case 'forum_reply':
+                if (topicId) {
+                    navigate(`/forum/topic/${topicId}`);
+                } else {
+                    navigate('/forum');
+                }
+                break;
+
+            case 'certificate':
+                if (certificateId && courseId) {
+                    navigate(`/course/${courseId}/certificate`);
+                } else {
+                    navigate('/my-courses');
+                }
+                break;
+
+            case 'course_update':
+                if (courseId) {
+                    if (updateType === 'new_lecture' && lectureId) {
+                        navigate(`/course/${courseId}/lesson/${lectureId}`);
+                    } else if (updateType === 'new_chapter' && chapterId) {
+                        navigate(`/course/${courseId}/lesson`);
+                    } else {
+                        navigate(`/course/${courseId}`);
+                    }
+                }
+                break;
+
+            case 'chapter_complete':
+                if (courseId && chapterId) {
+                    navigate(`/course/${courseId}/lesson?chapter=${chapterId}`);
+                } else if (courseId) {
+                    navigate(`/course/${courseId}/lesson`);
+                }
+                break;
+
+            case 'announcement':
+                if (courseId) {
+                    navigate(`/course/${courseId}/announcements`);
+                } else {
+                    navigate('/forum');
+                }
+                break;
+
+            case 'forum':
+            case 'forum_ban':
+            case 'forum_reaction':
+            case 'report_resolution':
+                if (topicId) {
+                    navigate(`/forum/topic/${topicId}`);
+                } else if (forumPostId) {
+                    navigate(`/forum/post/${forumPostId}`);
+                } else {
+                    navigate('/forum');
+                }
+                break;
+
+            case 'study_reminder':
+                if (courseId) {
+                    navigate(`/course/${courseId}/lesson`);
+                } else {
+                    navigate('/my-courses');
+                }
+                break;
+
+            case 'system':
+                // Handle system subtypes
+                if (payload?.type === 'chat_escalation' || payload?.type === 'course_chat_escalation') {
+                    // Teacher escalation - navigate to teacher chat
+                    if (payload?.lessonId) {
+                        navigate(`/teacher/lecture-chat/${payload.lessonId}?escalationId=${payload.escalationId}&messageId=${payload.messageId}`);
+                    } else if (payload?.courseId) {
+                        navigate(`/teacher/chat/${payload.courseId}?escalationId=${payload.escalationId}&messageId=${payload.messageId}`);
+                    } else {
+                        navigate('/teacher/chats');
+                    }
+                } else if (payload?.type === 'chat_escalation_admin' || payload?.type === 'course_chat_escalation_admin') {
+                    // Admin escalation - navigate to admin chat
+                    if (payload?.lessonId) {
+                        navigate(`/admin/lecture-chat/${payload.lessonId}?escalationId=${payload.escalationId}&messageId=${payload.messageId}`);
+                    } else if (payload?.courseId) {
+                        navigate(`/admin/chat/${payload.courseId}?escalationId=${payload.escalationId}&messageId=${payload.messageId}`);
+                    } else {
+                        navigate('/admin/chats');
+                    }
+                }
+                break;
+
+            default:
+                // For unknown notifications, stay on current page
+                break;
         }
     };
 

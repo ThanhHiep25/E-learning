@@ -9,7 +9,10 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(true);
 
-  const from = (location.state as any)?.from?.pathname || "/";
+  // Support both location.state and query param redirect
+  const searchParams = new URLSearchParams(location.search);
+  const redirectParam = searchParams.get('redirect');
+  const from = redirectParam || (location.state as any)?.from?.pathname || "/";
   const closeTo = "/";
 
   useEffect(() => {

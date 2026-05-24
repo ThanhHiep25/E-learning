@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Search, MessageSquare, Plus, ChevronRight, Filter, Users, Globe, Book, MessageCircle, Clock, Star } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { forumService } from '../services/forum.service';
-import type { ForumTopic, ForumType } from '../services/forum.service';
+import type { ForumTopic, ForumType, ForumStats, TopContributor } from '../services/forum.service';
 import { safeFormatDistanceToNow } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -15,11 +15,18 @@ const Forum: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    
+    // Stats and contributors
+    const [stats, setStats] = useState<ForumStats | null>(null);
+    const [contributors, setContributors] = useState<TopContributor[]>([]);
+    const [statsLoading, setStatsLoading] = useState(true);
 
     const courseId = searchParams.get('courseId');
 
     useEffect(() => {
         fetchTopics();
+        fetchStats();
+        fetchContributors();
     }, [activeType, courseId]);
 
     const fetchTopics = async () => {
@@ -33,55 +40,32 @@ const Forum: React.FC = () => {
             setTopics(response.topics);
         } catch (error) {
             console.error('Failed to fetch topics:', error);
-            // Mock data if API fails to show design
-            setTopics([
-                {
-                    id: 1,
-                    title: "Làm sao để học Javascript hiệu quả cho người mới?",
-                    content: "Mình mới bắt đầu học JS, thấy nhiều khái niệm quá...",
-                    type: 'global',
-                    courseId: null,
-                    lectureId: null,
-                    userId: 1,
-                    author: {
-                        id: 1,
-                        name: "Hoàng Nguyễn",
-                        avatar: "https://i.pravatar.cc/150?u=1",
-                        role: "STUDENT"
-                    },
-                    postCount: 15,
-                    views: 240,
-                    lastPostAt: new Date().toISOString(),
-                    createdAt: new Date(Date.now() - 3600000).toISOString(),
-                    updatedAt: new Date(Date.now() - 3600000).toISOString(),
-                    isPinned: false,
-                    isLocked: false
-                },
-                {
-                    id: 2,
-                    title: "Lỗi Vercel deployment: Module not found",
-                    content: "Khi mình deploy lên Vercel thì bị lỗi này, ai giúp mình với?",
-                    type: 'course',
-                    courseId: 10,
-                    lectureId: null,
-                    userId: 2,
-                    author: {
-                        id: 2,
-                        name: "Minh Thu",
-                        avatar: "https://i.pravatar.cc/150?u=2",
-                        role: "TEACHER"
-                    },
-                    postCount: 8,
-                    views: 120,
-                    lastPostAt: new Date().toISOString(),
-                    createdAt: new Date(Date.now() - 7200000).toISOString(),
-                    updatedAt: new Date(Date.now() - 7200000).toISOString(),
-                    isPinned: false,
-                    isLocked: false
-                }
-            ]);
+            toast.error('Không thể tải danh sách chủ đề');
+            setTopics([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchStats = async () => {
+        try {
+            setStatsLoading(true);
+            const data = await forumService.getForumStats();
+            setStats(data);
+        } catch (error) {
+            console.error('Failed to fetch forum stats:', error);
+        } finally {
+            setStatsLoading(false);
+        }
+    };
+
+    const fetchContributors = async () => {
+        try {
+            const data = await forumService.getTopContributors(5);
+            setContributors(data);
+        } catch (error) {
+            console.error('Failed to fetch contributors:', error);
+            setContributors([]);
         }
     };
 
@@ -192,7 +176,7 @@ const Forum: React.FC = () => {
                                         {/* Avatar Column */}
                                         <div className="hidden sm:block shrink-0">
                                             <div className="relative">
-                                                <img src={topic.author?.avatar || "https://i.pravatar.cc/150"} alt={topic.author?.name} className="w-14 h-14 rounded-full object-cover shadow-sm group-hover:scale-110 transition-transform duration-500" />
+                                                <img src={topic.author?.avatar || '/default-avatar.png'} alt={topic.author?.name} className="w-14 h-14 rounded-full object-cover shadow-sm group-hover:scale-110 transition-transform duration-500" />
                                                 <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-lg flex items-center justify-center border-2 border-white shadow-sm ${topic.author?.role?.toUpperCase() === 'TEACHER' ? 'bg-amber-500' : 'bg-gray-900'}`}>
                                                     {topic.author?.role?.toUpperCase() === 'TEACHER' ? <Star size={10} className="text-white fill-white" /> : <Users size={10} className="text-white" />}
                                                 </div>
@@ -270,15 +254,19 @@ const Forum: React.FC = () => {
                             <div className="space-y-6 relative z-10">
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-white/50 font-bold tracking-tight">Tổng số chủ đề</span>
-                                    <span className="text-xl font-bold">{topics.length}</span>
+                                    <span className="text-xl font-bold">{statsLoading ? '...' : (stats?.totalTopics || 0)}</span>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-white/50 font-bold tracking-tight">Thành viên thảo luận</span>
-                                    <span className="text-xl font-bold">1.2K+</span>
+                                    <span className="text-sm text-white/50 font-bold tracking-tight">Tổng bài viết</span>
+                                    <span className="text-xl font-bold">{statsLoading ? '...' : (stats?.totalPosts || 0)}</span>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-white/50 font-bold tracking-tight">Câu trả lời/ngày</span>
-                                    <span className="text-xl font-bold">+450</span>
+                                    <span className="text-sm text-white/50 font-bold tracking-tight">Thành viên</span>
+                                    <span className="text-xl font-bold">{statsLoading ? '...' : (stats?.totalUsers || 0)}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-white/50 font-bold tracking-tight">Bài viết hôm nay</span>
+                                    <span className="text-xl font-bold text-amber-400">{statsLoading ? '...' : (stats?.todayPosts || 0)}</span>
                                 </div>
                             </div>
                         </div>
@@ -290,20 +278,19 @@ const Forum: React.FC = () => {
                                 <div className="h-1 w-8 bg-amber-500 rounded-full"></div>
                             </h4>
                             <div className="space-y-6">
-                                {[
-                                    { name: "Sơn Tùng M-TP", points: 2540, avatar: "https://i.pravatar.cc/150?u=mtp", role: "Vip" },
-                                    { name: "Lê Cát Trọng Lý", points: 1920, avatar: "https://i.pravatar.cc/150?u=ly", role: "Teacher" },
-                                    { name: "Jack J97", points: 1560, avatar: "https://i.pravatar.cc/150?u=5m", role: "Elite" },
-                                ].map((user, i) => (
-                                    <div key={i} className="flex items-center gap-4 group cursor-pointer">
-                                        <img src={user.avatar} className="w-12 h-12 rounded-full object-cover hover:scale-105 transition-transform" alt="" />
-                                        <div className="flex-1">
-                                            <h5 className="text-sm font-bold text-slate-800 group-hover:text-amber-600 transition-all">{user.name}</h5>
-                                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{user.role}</p>
+                                {contributors.length > 0 ? (
+                                    contributors.map((contributor) => (
+                                        <div key={contributor.id} className="flex items-center gap-4 group cursor-pointer">
+                                            <img src={contributor.avatar || '/default-avatar.png'} className="w-12 h-12 rounded-full object-cover hover:scale-105 transition-transform" alt="" />
+                                            <div className="flex-1">
+                                                <h5 className="text-sm font-bold text-slate-800 group-hover:text-amber-600 transition-all">{contributor.name}</h5>
+                                                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{contributor.points} điểm</p>
+                                            </div>
                                         </div>
-
-                                    </div>
-                                ))}
+                                    ))
+                                ) : (
+                                    <p className="text-sm text-gray-400 text-center py-4">Chưa có dữ liệu</p>
+                                )}
                             </div>
                         </div>
                     </div>

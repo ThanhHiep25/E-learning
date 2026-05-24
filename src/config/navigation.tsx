@@ -1,10 +1,11 @@
 import {
     Home,
-    Calendar,
     Library,
-    ClipboardList,
+    Target,
+    MessageSquare,
+    Calendar,
+    Map,
     type LucideIcon,
-    MessageSquare
 } from 'lucide-react';
 
 export interface SubmenuItem {
@@ -21,31 +22,39 @@ export interface NavItem {
     hasSubmenu?: boolean;
     submenuItems?: SubmenuItem[];
     roles?: ('STUDENT' | 'TEACHER' | 'ADMIN')[];
+    isCta?: boolean;
 }
 
 export const navigationConfig: NavItem[] = [
     { label: 'Trang chủ', path: '/', icon: Home },
     {
+        label: 'Khóa học',
+        path: '/courses',
+        icon: Library,
+        hasSubmenu: true,
+    },
+    {
+        label: 'Lộ trình',
+        path: '/my-path',
+        icon: Map,
+        roles: ['STUDENT'],
+    },
+    {
         label: 'Lịch học',
         path: '/lich-hoc',
         icon: Calendar,
+        roles: ['STUDENT', 'TEACHER', 'ADMIN'],
     },
     {
-        label: 'Các khóa học',
-        path: '/courses',
-        icon: Library,
-    },
-
-    {
-        label: 'Bài kiểm tra',
-        path: '/bai-kiem-tra',
-        icon: ClipboardList,
-        roles: ['STUDENT'],
-    },
-
-    {
-        label: 'Diễn đàn / Hỏi đáp',
+        label: 'Diễn đàn',
         path: '/forum',
         icon: MessageSquare,
     },
 ];
+
+// CTA riêng cho Placement Test - hiển thị nổi bật trong header
+export const placementTestCta = {
+    label: 'Kiểm tra trình độ',
+    path: '/#personalized-path',
+    icon: Target,
+};

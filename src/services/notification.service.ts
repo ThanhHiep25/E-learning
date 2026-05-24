@@ -1,6 +1,28 @@
 import { apiRequest } from "./api";
 
-export type NotificationType = 'enrollment' | 'quiz' | 'review' | 'payment' | 'course_update' | 'announcement' | 'forum_ban' | 'report_resolution' | 'forum_reaction';
+export type NotificationType =
+  | 'enrollment'
+  | 'enrollment_success'
+  | 'enrollment_renewal'
+  | 'quiz'
+  | 'review'
+  | 'payment'
+  | 'course_update'
+  | 'certificate'
+  | 'announcement'
+  | 'system'
+  | 'quiz_reminder'
+  | 'study_reminder'
+  | 'chapter_complete'
+  | 'forum'
+  | 'forum_ban'
+  | 'report_resolution'
+  | 'forum_reaction'
+  | 'review_reply'
+  | 'forum_reply'
+  | 'message_mention'
+  | 'course_approved'
+  | 'course_rejected';
 
 export interface Notification {
   id: string | number;
@@ -52,6 +74,16 @@ export const notificationService = {
     await apiRequest(`${endpoint}/read-all`, {
       method: 'PUT'
     });
+  },
+
+  async getById(role: 'student' | 'teacher' | 'admin', notificationId: string | number): Promise<Notification | null> {
+    try {
+      const endpoint = role === 'admin' ? `admin/my-notifications` : `${role}/notifications`;
+      const response = await apiRequest<{ notification: Notification }>(`${endpoint}/${notificationId}`);
+      return response.notification || null;
+    } catch (error) {
+      return null;
+    }
   },
 
   async deleteNotification(role: 'student' | 'teacher' | 'admin', notificationId: string | number): Promise<void> {

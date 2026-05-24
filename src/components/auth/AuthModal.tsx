@@ -69,6 +69,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'L
         }
     }, [isOpen, initialMode]);
 
+    // 🛡️ P2-5 FIX: Handle login với proper navigation và error handling
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -82,19 +83,24 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'L
                     localStorage.removeItem('remembered_email');
                 }
                 
-                onClose();
-                
-                // Redirect if Teacher or Admin
+                // 🛡️ P2-5 FIX: Navigate first, then close to prevent race condition
+                // Redirect if Teacher or Admin, otherwise let parent handle
                 if (loggedInUser.role === 'ADMIN') {
-                    navigate('/admin/dashboard');
+                    navigate('/admin/dashboard', { replace: true });
+                    onClose();
                 } else if (loggedInUser.role === 'TEACHER') {
-                    navigate('/teacher/dashboard');
+                    navigate('/teacher/dashboard', { replace: true });
+                    onClose();
+                } else {
+                    // Student - close modal and let parent handle redirect
+                    onClose();
                 }
             } else {
                 setError('Email hoặc mật khẩu không chính xác');
             }
-        } catch (err) {
-            setError('Đã có lỗi xảy ra. Vui lòng thử lại');
+        } catch (err: any) {
+            // 🛡️ P2-5 FIX: Better error message from API
+            setError(err?.message || 'Đã có lỗi xảy ra. Vui lòng thử lại');
         } finally {
             setLoading(false);
         }

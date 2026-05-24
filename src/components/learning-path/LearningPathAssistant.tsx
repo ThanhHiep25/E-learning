@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Brain, Compass, BookOpen, ChevronRight, Award, History, CheckCircle2, AlertCircle, Clock, ArrowRight, Flame, Headphones, Play, Pause } from 'lucide-react';
+import { X, Brain, Compass, BookOpen, CheckCircle2, AlertCircle, Clock, Flame, Headphones, Play, Pause, PlayCircle } from 'lucide-react';
 import type { PlacementQuiz, PlacementResult } from '../../services/adaptive.service';
 import type { PlacementSessionResult } from '../../services/placement.service';
 import { adaptiveService } from '../../services/adaptive.service';
 import { placementService } from '../../services/placement.service';
 import { categoryService } from '../../services/category.service';
 import type { BackendCategory } from '../../services/category.service';
+import { learningPathService } from '../../services/learningPath.service';
+import toast from 'react-hot-toast';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -54,7 +56,7 @@ const ListeningQuestionPlayer: React.FC<ListeningQuestionPlayerProps> = ({ quest
     return (
         <div className="space-y-6">
             {/* Audio Player */}
-            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 border border-indigo-100">
+            <div className="bg-linear-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 border border-indigo-100">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={playAudio}
@@ -123,8 +125,8 @@ interface LearningPathAssistantProps {
 type Step = 'choose-category' | 'choose-flow' | 'select-level' | 'taking-test' | 'results' | 'no-test' | 'retake-cooldown';
 
 const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, onClose, onComplete, initialCategory }) => {
-    const [step, setStep] = useState<Step>('choose-category');
-    const [categories, setCategories] = useState<BackendCategory[]>([]);
+    const [step, setStep] = useState<Step>('select-level');
+    const [_categories, setCategories] = useState<BackendCategory[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<BackendCategory | null>(null);
     const [quiz, setQuiz] = useState<PlacementQuiz | null>(null);
     const [answers, setAnswers] = useState<Record<number, any>>({});
@@ -133,18 +135,20 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
     const [fillBlankError, setFillBlankError] = useState<string | null>(null);
     const [result, setResult] = useState<PlacementResult & { sessionId?: number } | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double-submit
+    const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now()); // Track time per question
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [currentQuestionNumber, setCurrentQuestionNumber] = useState<number | null>(null);
     const [showCancelConfirm, setShowCancelConfirm] = useState(false);
     const [sessionResult, setSessionResult] = useState<PlacementSessionResult | null>(null);
-    const [resultLoading, setResultLoading] = useState(false);
+
     const [inProgressSession, setInProgressSession] = useState<any>(null);
-    const [progress, setProgress] = useState<{
+    const [_progress, setProgress] = useState<{
     currentQuestion: number;
     totalQuestions: number;
     accuracy: number;
 } | null>(null);
-    const [selectedSelfLevel, setSelectedSelfLevel] = useState<string | null>(null);
+    const [_selectedSelfLevel, setSelectedSelfLevel] = useState<string | null>(null);
     const [retakeEligibility, setRetakeEligibility] = useState<{
         canRetake: boolean;
         nextRetakeAvailableAt?: string;
@@ -153,16 +157,35 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
     } | null>(null);
     // Animation state for question transition
     const [direction, setDirection] = useState(1);
-    const [isAnimating, setIsAnimating] = useState(false);
+    const [_isAnimating, _setIsAnimating] = useState(false);
+    const [demoMode] = useState(() => window.location.search.includes('placement_demo=1'));
+    const [demoPaused, setDemoPaused] = useState(false);
+    const [adaptiveMetrics, setAdaptiveMetrics] = useState<any>(null);
 
-    // Debug: Track currentQuestionNumber changes
+// Debug: Track currentQuestionNumber changes
     useEffect(() => {
         console.log('[DEBUG] currentQuestionNumber changed to:', currentQuestionNumber);
     }, [currentQuestionNumber]);
 
-    // Check for in-progress session when component opens OR when entering choose-category step
+    // Auto-assign learning path when results are ready (use CEFR level, not Vietnamese label)
     useEffect(() => {
-        if (isOpen && step === 'choose-category') {
+        if (step === 'results') {
+            const cefrLevel = sessionResult?.finalLevel || result?.level;
+            // Map Vietnamese back to CEFR if needed
+            const reverseMap: Record<string, string> = {
+                'Cơ bản': 'A1', 'Sơ cấp': 'A2', 'Trung cấp': 'B1',
+                'Trung cấp cao': 'B2', 'Nâng cao': 'C1', 'Thành thạo': 'C2',
+            };
+            const levelToSend = reverseMap[cefrLevel || ''] || cefrLevel;
+            if (levelToSend && /^[A-C][1-2]$/.test(levelToSend)) {
+                learningPathService.assignPath(levelToSend).catch(() => {});
+            }
+        }
+    }, [step, sessionResult?.finalLevel, result?.level]);
+
+    // Check for in-progress session when component opens (on any step)
+    useEffect(() => {
+        if (isOpen && (step === 'select-level' || step === 'choose-category')) {
             checkInProgressSession();
         }
     }, [isOpen, step]);
@@ -209,9 +232,9 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
         try {
             console.log('[DEBUG] Resuming test, sessionId:', inProgressSession.sessionId);
             // Get current question from the session
-            const nextQ = await adaptiveService.fetchNextQuestion(inProgressSession.sessionId);
+            const nextQ = await adaptiveService.fetchNextQuestion(inProgressSession.sessionId, demoMode);
             console.log('[DEBUG] fetchNextQuestion returned:', nextQ);
-            
+
             if (nextQ) {
                 setQuiz({
                     id: inProgressSession.sessionId,
@@ -223,6 +246,7 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                 setCurrentQuestionIndex(0); // API returns current question, so always start at 0
                 console.log('[DEBUG] Setting currentQuestionNumber to:', nextQ.currentQuestion);
                 setCurrentQuestionNumber(nextQ.currentQuestion ?? null); // Store actual question number from API
+                setQuestionStartTime(Date.now()); // Reset timer for resumed question
                 setStep('taking-test');
             } else {
                 // No more questions or session completed
@@ -277,23 +301,19 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                 const found = res.find(c => c.name === initialCategory);
                 if (found) {
                     setSelectedCategory(found);
-                    setStep('choose-flow');
+                } else if (res.length > 0) {
+                    setSelectedCategory(res[0]);
                 }
+            } else if (res.length > 0) {
+                setSelectedCategory(res[0]);
             }
         } catch (err) {
             console.error(err);
         }
     };
 
-    const handleSelectCategory = (cat: BackendCategory) => {
-        setSelectedCategory(cat);
-        setStep('choose-flow');
-    };
 
-    const handleStartTest = () => {
-        // Show CEFR level selection instead of starting immediately
-        setStep('select-level');
-    };
+
 
     const handleSelectLevel = async (level: string) => {
         if (!selectedCategory) return;
@@ -308,28 +328,29 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                 setLoading(false);
                 return;
             }
-            
+
             // Start placement session with self-assessed level (10 questions)
             const session = await placementService.startSession({
                 selfAssessedLevel: level as any
             });
             console.log('[DEBUG] Placement session started:', session);
-            
+
             // Get first question
-            const nextQ = await adaptiveService.fetchNextQuestion(session.sessionId);
+            const nextQ = await adaptiveService.fetchNextQuestion(session.sessionId, demoMode);
             if (!nextQ) {
                 throw new Error('Không thể lấy câu hỏi đầu tiên');
             }
-            
+
             setQuiz({
                 id: session.sessionId,
                 title: 'Bài kiểm tra đầu vào',
-                description: `Xác định cấp độ hiện tại của bạn (10 câu) - Bạn tự đánh giá: ${level}`,
-                totalQuestions: 10,
+                description: `Xác định cấp độ hiện tại của bạn (${session.totalQuestions || 20} câu) - Bạn tự đánh giá: ${level}`,
+                totalQuestions: session.totalQuestions || 20,
                 questions: [nextQ]
             });
             setCurrentQuestionIndex(0);
             setCurrentQuestionNumber(1);
+            setQuestionStartTime(Date.now()); // Reset timer for first question
             setStep('taking-test');
         } catch (err: any) {
             console.error('[DEBUG] Placement start failed:', err);
@@ -339,42 +360,18 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
         }
     };
 
-    const handleSetBeginner = async () => {
-        if (!selectedCategory) return;
-        setLoading(true);
-        try {
-            // Check retake eligibility first
-            const eligibility = await checkRetakeEligibility();
-            if (!eligibility.canRetake) {
-                setRetakeEligibility(eligibility);
-                setStep('retake-cooldown');
-                setLoading(false);
-                return;
-            }
-            
-            // Get placement test for beginner (self-assessed A1)
-            const q = await adaptiveService.getBeginnerPlacementTest(selectedCategory.id);
-            setQuiz(q);
-            setCurrentQuestionIndex(0);
-            setStep('taking-test');
-        } catch (err) {
-            console.error(err);
-            alert('Lỗi: ' + (err instanceof Error ? err.message : 'Không thể tạo bài test'));
-        } finally {
-            setLoading(false);
-        }
-    };
+
 
     const handleNextQuestion = async () => {
-        if (!quiz) return;
-        
+        if (!quiz || isSubmitting) return; // Prevent double-submit
+
         // Set direction for animation (moving forward)
         setDirection(1);
-        
+
         const totalQuestions = quiz.totalQuestions || 20;
         const currentQ = quiz.questions[currentQuestionIndex];
         const answer = currentQ ? answers[currentQ.id] : undefined;
-        
+
         // Validate fill_blank - require at least 1 word
         if (currentQ?.type === 'fill_blank' && answer) {
             const wordCount = answer.trim().split(/\s+/).filter((w: string) => w.length > 0).length;
@@ -384,18 +381,25 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
             }
             setFillBlankError(null);
         }
-        
-        // Submit answer for current question first
-        if (currentQ && answer) {
-            setLoading(true);
-            try {
-                console.log('[DEBUG] Submitting answer for question', currentQ.id, ':', answer);
+
+        // Calculate time spent on this question
+        const timeSpentSeconds = Math.max(0, (Date.now() - questionStartTime) / 1000);
+
+        // Prevent double-submit
+        setIsSubmitting(true);
+        setLoading(true);
+
+        try {
+            // Submit answer for current question first
+            if (currentQ && answer) {
+                console.log('[DEBUG] Submitting answer for question', currentQ.id, ':', answer, 'timeSpent:', timeSpentSeconds);
                 const result = await placementService.submitAnswer(quiz.id, {
                     questionId: currentQ.id,
-                    answer: answer
+                    answer: answer,
+                    timeSpentSeconds: timeSpentSeconds
                 });
                 console.log('[DEBUG] Answer submitted successfully, result:', result);
-                
+
                 // Store feedback for this question
                 if (result) {
                     setAnswerFeedback(prev => ({
@@ -407,30 +411,130 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                     }));
                     // Mark question as submitted
                     setSubmittedQuestions(prev => new Set(prev).add(currentQ.id));
+
+                    // Demo mode: pause to show adaptive metrics before advancing
+                    if (demoMode) {
+                        setAdaptiveMetrics({
+                            isCorrect: result.isCorrect,
+                            correctAnswer: result.correctAnswer,
+                            currentLevel: result.currentLevel,
+                            abilityScore: result.abilityScore,
+                            streakCorrect: result.streakCorrect,
+                            streakWrong: result.streakWrong,
+                            canStopEarly: result.canStopEarly,
+                            questionCount: result.questionCount,
+                        });
+                        setDemoPaused(true);
+                        setLoading(false);
+                        setIsSubmitting(false);
+                        return;
+                    }
                 }
-            } catch (err) {
-                console.error('[DEBUG] Error submitting answer:', err);
+
+                // If not all questions answered yet, fetch next
+                if (currentQuestionIndex < totalQuestions - 1) {
+                    const nextQ = await adaptiveService.fetchNextQuestion(quiz.id, demoMode);
+                    if (nextQ) {
+                        setQuiz(prev => prev ? { ...prev, questions: [...prev.questions, nextQ] } : null);
+                        setCurrentQuestionIndex(prev => prev + 1);
+                        setCurrentQuestionNumber(nextQ.currentQuestion ?? null);
+                        setFillBlankError(null);
+                        // Reset timer for next question
+                        setQuestionStartTime(Date.now());
+                    } else {
+                        await submitTest();
+                    }
+                }
             }
+        } catch (err: any) {
+            console.error('[DEBUG] Error in handleNextQuestion:', err);
+            // Check for TOO_FAST error (minimum time requirement)
+            const errorMessage = err?.message || '';
+            if (errorMessage.includes('5 giây') || errorMessage.includes('TOO_FAST')) {
+                toast.error('Vui lòng dành ít nhất 5 giây để đọc và trả lời câu hỏi.');
+            } else {
+                toast.error('Lỗi khi xử lý câu hỏi. Vui lòng thử lại.');
+            }
+        } finally {
+            setLoading(false);
+            setIsSubmitting(false); // Re-enable button
         }
+    };
+
+    const handleSkipQuestion = async () => {
+        if (!quiz || isSubmitting) return;
         
-        // If not all questions answered yet, fetch next
-        if (currentQuestionIndex < totalQuestions - 1) {
-            try {
-                const nextQ = await adaptiveService.fetchNextQuestion(quiz.id);
+        const currentQ = quiz.questions[currentQuestionIndex];
+        if (!currentQ) return;
+
+        // Set direction for animation (moving forward)
+        setDirection(1);
+        setIsSubmitting(true);
+        setLoading(true);
+
+        try {
+            // Calculate time spent
+            const timeSpentSeconds = (Date.now() - questionStartTime) / 1000;
+
+            // 1. Tell backend we are skipping this question
+            const response = await placementService.skipQuestion(quiz.id, {
+                questionId: currentQ.id,
+                timeSpentSeconds: Math.round(timeSpentSeconds)
+            });
+
+            // 2. Handle the response (which includes the next question)
+            if (response.completed) {
+                await submitTest();
+            } else if (response.nextQuestion) {
+                const nextQ = response.nextQuestion;
+                setQuiz(prev => prev ? { ...prev, questions: [...prev.questions, nextQ as any] } : null);
+                setCurrentQuestionIndex(prev => prev + 1);
+                setCurrentQuestionNumber(nextQ.currentQuestion ?? null);
+                setFillBlankError(null);
+                setQuestionStartTime(Date.now()); // Reset timer
+            } else {
+                // Fallback if no nextQuestion in response
+                const nextQ = await adaptiveService.fetchNextQuestion(quiz.id, demoMode);
                 if (nextQ) {
-                    setQuiz(prev => prev ? { ...prev, questions: [...prev.questions, nextQ] } : null);
+                    setQuiz(prev => prev ? { ...prev, questions: [...prev.questions, nextQ as any] } : null);
                     setCurrentQuestionIndex(prev => prev + 1);
-                    setFillBlankError(null); // Clear error for next question
+                    setCurrentQuestionNumber(nextQ.currentQuestion ?? null);
+                    setFillBlankError(null);
+                    setQuestionStartTime(Date.now());
                 } else {
-                    // No more questions from BE, submit what we have
                     await submitTest();
                 }
-            } catch (err) {
-                console.error(err);
-                alert('Lỗi khi tải câu hỏi tiếp theo');
-            } finally {
-                setLoading(false);
             }
+        } catch (err: any) {
+            console.error('[DEBUG] Skip question failed:', err);
+            toast.error('Không thể bỏ qua câu hỏi. Vui lòng thử lại.');
+        } finally {
+            setLoading(false);
+            setIsSubmitting(false);
+        }
+    };
+
+    const proceedToNextQuestion = async () => {
+        if (!quiz) return;
+        setDemoPaused(false);
+        setLoading(true);
+        try {
+            const nextQ = await adaptiveService.fetchNextQuestion(quiz.id, demoMode);
+            if (nextQ) {
+                setQuiz(prev => prev ? { ...prev, questions: [...prev.questions, nextQ] } : null);
+                setCurrentQuestionIndex(prev => prev + 1);
+                setCurrentQuestionNumber(nextQ.currentQuestion ?? null);
+                setFillBlankError(null);
+                setQuestionStartTime(Date.now());
+            } else {
+                await submitTest();
+            }
+        } catch (err: any) {
+            console.error('[DEBUG] Error fetching next question:', err);
+            toast.error('Lỗi khi tải câu hỏi tiếp theo.');
+        } finally {
+            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
@@ -445,7 +549,7 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
             setAnswerFeedback({}); // Clear feedback
             setFillBlankError(null); // Clear error
             setInProgressSession(null); // Clear session so cards revert to normal
-            setStep('choose-category'); // Go back to category selection
+            setStep('select-level');
         } catch (err) {
             console.error('Cancel test failed:', err);
             alert('Không thể hủy bài test. Vui lòng thử lại.');
@@ -482,17 +586,28 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
             
             setResult(res);
             setStep('results');
-            
+            onComplete?.();
+
+            // Save to localStorage for guest (anonymous) users
+            const cacheKey = 'placement_recommendations_anonymous';
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    status: { level: (res as any).level || 'A1', categoryName: (res as any).categoryName || 'General', completedAt: new Date().toISOString() },
+                    sessionResult: res,
+                    recommendations: (res as any).suggestedCourses || [],
+                    timestamp: Date.now(),
+                }));
+            } catch {
+                // Ignore storage errors
+            }
+
             // Fetch detailed session result from API
             if (res?.sessionId) {
-                setResultLoading(true);
                 try {
                     const detailedResult = await placementService.getResult(res.sessionId);
                     setSessionResult(detailedResult);
                 } catch (err) {
                     console.error('[DEBUG] Failed to fetch session result:', err);
-                } finally {
-                    setResultLoading(false);
                 }
             }
         } catch (err) {
@@ -525,26 +640,38 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                 return;
             }
             
-            setResult({
+            const finalResult = {
                 sessionId: result.sessionId || quiz.id,
                 score: result.correctAnswers || 0,
-                maxScore: result.totalQuestions || 10,
-                percentage: Math.round(((result.correctAnswers || 0) / (result.totalQuestions || 10)) * 100),
+                maxScore: result.totalQuestions || 20,
+                percentage: Math.round(((result.correctAnswers || 0) / (result.totalQuestions || 20)) * 100),
                 level: result.finalCefrLevel || 'A1',
                 suggestedCourses: [] // Will be populated from sessionResult
-            });
+            };
+            setResult(finalResult);
             setStep('results');
-            
+            onComplete?.();
+
+            // Save to localStorage for guest (anonymous) users
+            const cacheKey = 'placement_recommendations_anonymous';
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    status: { level: finalResult.level, categoryName: (result as any).categoryName || 'General', completedAt: new Date().toISOString() },
+                    sessionResult: finalResult,
+                    recommendations: (result as any).suggestedCourses || [],
+                    timestamp: Date.now(),
+                }));
+            } catch {
+                // Ignore storage errors
+            }
+
             // Fetch detailed session result
-            setResultLoading(true);
             try {
                 const sessionId = result.sessionId || quiz.id;
                 const detailedResult = await placementService.getResult(sessionId);
                 setSessionResult(detailedResult);
             } catch (err) {
                 console.error('[DEBUG] Failed to fetch session result:', err);
-            } finally {
-                setResultLoading(false);
             }
         } catch (err) {
             console.error('[DEBUG] Error completing test:', err);
@@ -557,10 +684,10 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-10 pointer-events-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 pointer-events-auto">
             <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-            <div className="relative w-full max-w-7xl bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col md:flex-row h-full max-h-[85vh]">
+            <div className="relative w-[98vw] bg-white rounded-[32px] shadow-2xl overflow-hidden flex flex-col md:flex-row h-[95vh]">
                 {/* Left Panel: Sidebar Branding */}
                 <div className="w-full md:w-80 bg-linear-to-br from-indigo-600 via-blue-600 to-amber-500 p-8 text-white hidden md:flex flex-col justify-between">
                     <div>
@@ -588,7 +715,14 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                 <div className="flex-1 flex flex-col bg-gray-50/30 overflow-hidden relative">
                     {/* Header */}
                     <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-10 font-bold text-xl text-gray-500">
-                        <span>{step === 'choose-category' ? 'Bước 1: Chọn chuyên môn' : step === 'choose-flow' ? 'Bước 2: Xác định cấp độ' : step === 'taking-test' ? 'Bước 3: Bài kiểm tra đầu vào' : 'Kết quả phân tích'}</span>
+                        <span className="flex items-center gap-2">
+                            {step === 'select-level' ? 'Xác định cấp độ' : step === 'taking-test' ? 'Bài kiểm tra đầu vào' : 'Kết quả phân tích'}
+                            {demoMode && step === 'taking-test' && (
+                                <span className="bg-amber-400 text-amber-900 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">
+                                    Demo Mode
+                                </span>
+                            )}
+                        </span>
                         <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 transition-all cursor-pointer">
                             <X size={20} />
                         </button>
@@ -597,127 +731,33 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                     {/* Step Content */}
                     <div className="flex-1 overflow-y-auto p-6 md:p-8">
 
-                        {step === 'choose-category' && (
+                        {step === 'select-level' && (
                             <div className="space-y-6">
                                 <div className="text-center md:text-left mb-8">
-                                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Bạn muốn học gì hôm nay?</h3>
-                                    <p className="text-gray-500 font-medium">Chọn lĩnh vực bạn muốn xây dựng lộ trình học tập tối ưu.</p>
+                                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Bạn tự đánh giá trình độ của mình ở đâu?</h3>
+                                    <p className="text-gray-500 font-medium italic">Chọn cấp độ phù hợp nhất để hệ thống tạo bài test thích hợp.</p>
                                 </div>
-                                
-                                {/* Resume Test Banner - if in-progress session exists */}
+
+                                {/* Resume in-progress session */}
                                 {inProgressSession && (
-                                    <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 mb-6">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                                                <Clock className="text-amber-600" size={24} />
-                                            </div>
-                                            <div className="flex-1">
-                                                <h4 className="font-bold text-amber-900">Bạn có bài test đang làm dở</h4>
-                                                <p className="text-sm text-amber-700">
-                                                    Câu {inProgressSession.currentQuestion + 1} / {inProgressSession.totalQuestions} • 
-                                                    Đúng {Math.round((inProgressSession.accuracy || 0) * 100)}%
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={handleResumeTest}
-                                                disabled={loading}
-                                                className="px-6 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center gap-2"
-                                            >
-                                                {loading ? <Clock className="animate-spin" size={18} /> : <ArrowRight size={18} />}
-                                                Tiếp tục làm
-                                            </button>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-4">
+                                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                                            <PlayCircle size={24} />
                                         </div>
+                                        <div className="flex-1 text-center sm:text-left">
+                                            <p className="font-bold text-gray-900">Bạn đang có bài test chưa hoàn thành</p>
+                                            <p className="text-sm text-gray-500">Câu {inProgressSession.currentQuestion || '?'}/{inProgressSession.totalQuestions || 20} — Trình độ: {inProgressSession.currentLevel || '?'}</p>
+                                        </div>
+                                        <button
+                                            onClick={handleResumeTest}
+                                            disabled={loading}
+                                            className="px-6 py-2.5 bg-amber-500 text-white rounded-xl font-bold text-sm hover:bg-amber-600 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                                        >
+                                            {loading ? 'Đang tải...' : 'Tiếp tục làm'}
+                                        </button>
                                     </div>
                                 )}
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {categories.map((cat) => (
-                                        <button
-                                            key={cat.id}
-                                            onClick={() => inProgressSession ? handleResumeTest() : handleSelectCategory(cat)}
-                                            className={`p-6 bg-white border rounded-3xl text-left hover:shadow-xl transition-all group relative overflow-hidden cursor-pointer ${
-                                                inProgressSession 
-                                                    ? 'border-amber-300 hover:border-amber-500 hover:shadow-amber-500/10' 
-                                                    : 'border-gray-100 hover:border-blue-500 hover:shadow-blue-500/10'
-                                            }`}
-                                        >
-                                            <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 transition-colors ${
-                                                inProgressSession ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-blue-50 group-hover:bg-blue-100'
-                                            }`} />
-                                            <h4 className="font-bold text-gray-900 mb-1 relative z-10 text-lg">{cat.name}</h4>
-                                            <p className={`text-xs font-bold relative z-10 flex items-center gap-1 ${
-                                                inProgressSession ? 'text-amber-600' : 'text-gray-400'
-                                            }`}>
-                                                {inProgressSession ? (
-                                                    <>
-                                                        <Clock size={10} className="animate-pulse" />
-                                                        Tiếp tục bài làm
-                                                        <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        Khám phá lộ trình
-                                                        <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
-                                                    </>
-                                                )}
-                                            </p>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {step === 'choose-flow' && selectedCategory && (
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <button onClick={() => setStep('choose-category')} className="text-blue-600 font-bold text-sm hover:underline cursor-pointer">← Thay đổi chủ đề</button>
-                                </div>
-                                <div className="text-center md:text-left mb-8">
-                                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Kiến thức của bạn về <span className="text-blue-600 underline underline-offset-4">{selectedCategory.name}</span> thế nào?</h3>
-                                    <p className="text-gray-500 font-medium italic underline decoration-amber-500">Chúng tôi cần biết điểm xuất phát của bạn để gợi ý chính xác hơn.</p>
-                                </div>
-                                <div className="grid grid-cols-1 gap-4">
-                                    <button
-                                        onClick={handleSetBeginner}
-                                        className="flex items-center gap-6 p-8 bg-white border border-gray-100 rounded-3xl text-left hover:border-amber-500 hover:shadow-xl hover:shadow-amber-500/10 transition-all group cursor-pointer"
-                                    >
-                                        <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform">
-                                            <History size={32} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="font-bold text-lg text-gray-900">Bắt đầu từ số 0</h4>
-                                            <p className="text-gray-500 text-sm italic">Tôi là người mới bắt đầu và chưa có kiến thức nền tảng về lĩnh vực này.</p>
-                                        </div>
-                                        <ChevronRight size={20} className="text-gray-300 group-hover:translate-x-1 transition-transform" />
-                                    </button>
-
-                                    <button
-                                        onClick={handleStartTest}
-                                        disabled={loading}
-                                        className="flex items-center gap-6 p-8 bg-white border border-gray-100 rounded-3xl text-left hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/10 transition-all group cursor-pointer"
-                                    >
-                                        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                                            <Award size={32} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="font-bold text-lg text-gray-900">Tôi đã có kiến thức</h4>
-                                            <p className="text-gray-500 text-sm italic">Làm bài test nhanh (10-15 câu) để xác định cấp độ hiện tại và bỏ qua các khóa cơ bản.</p>
-                                        </div>
-                                        {loading ? <Clock className="animate-spin text-blue-500" /> : <ChevronRight size={20} className="text-gray-300 group-hover:translate-x-1 transition-transform" />}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {step === 'select-level' && (
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <button onClick={() => setStep('choose-flow')} className="text-blue-600 font-bold text-sm hover:underline cursor-pointer">← Quay lại</button>
-                                </div>
-                                <div className="text-center md:text-left mb-8">
-                                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Bạn tự đánh giá trình độ của mình ở đâu?</h3>
-                                    <p className="text-gray-500 font-medium italic">Chọn cấp độ phù hợp nhất để chúng tôi tạo bài test phù hợp.</p>
-                                </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {[
                                         { level: 'A1', label: 'A1 - Beginner', desc: 'Mới bắt đầu' },
@@ -756,7 +796,7 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                                     </p>
                                 </div>
                                 <div className="flex gap-4">
-                                    <button onClick={() => setStep('choose-flow')} className="px-8 py-4 bg-gray-100 rounded-2xl font-bold text-gray-600 border border-transparent hover:border-gray-300 cursor-pointer">Quay lại</button>
+                                    <button onClick={() => setStep('select-level')} className="px-8 py-4 bg-gray-100 rounded-2xl font-bold text-gray-600 border border-transparent hover:border-gray-300 cursor-pointer">Quay lại</button>
                                 </div>
                             </div>
                         )}
@@ -792,7 +832,7 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                                     )}
                                 </div>
                                 <div className="flex gap-4">
-                                    <button onClick={() => setStep('choose-flow')} className="px-8 py-4 bg-gray-100 rounded-2xl font-bold text-gray-600 border border-transparent hover:border-gray-300 cursor-pointer">
+                                    <button onClick={() => setStep('select-level')} className="px-8 py-4 bg-gray-100 rounded-2xl font-bold text-gray-600 border border-transparent hover:border-gray-300 cursor-pointer">
                                         ← Quay lại
                                     </button>
                                 </div>
@@ -810,19 +850,19 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                                     {/* Progress Bar */}
                                     <div className="mt-4 space-y-2">
                                         <div className="flex justify-between text-xs font-medium text-blue-100">
-                                            <span>Câu {currentQuestionIndex + 1} / {quiz?.totalQuestions || 10}</span>
-                                            <span>{Math.round(((currentQuestionIndex + 1) / (quiz?.totalQuestions || 10)) * 100)}%</span>
+                                            <span>Câu {currentQuestionNumber || currentQuestionIndex + 1} / {quiz?.totalQuestions || 20}</span>
+                                            <span>{Math.round(((currentQuestionNumber || currentQuestionIndex + 1) / (quiz?.totalQuestions || 20)) * 100)}%</span>
                                         </div>
                                         <div className="w-full bg-blue-800/50 rounded-full h-2 relative overflow-hidden">
                                             <div 
                                                 className={`h-2 rounded-full transition-all duration-500 relative ${
-                                                    quiz?.totalQuestions && [Math.floor(quiz.totalQuestions * 0.25), Math.floor(quiz.totalQuestions * 0.5), Math.floor(quiz.totalQuestions * 0.75), quiz.totalQuestions].includes(currentQuestionIndex + 1) 
-                                                        ? 'animate-pulse bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500' 
+                                                    quiz?.totalQuestions && [Math.floor(quiz.totalQuestions * 0.25), Math.floor(quiz.totalQuestions * 0.5), Math.floor(quiz.totalQuestions * 0.75), quiz.totalQuestions].includes(currentQuestionNumber || currentQuestionIndex + 1)
+                                                        ? 'animate-pulse bg-linear-to-r from-amber-300 via-yellow-400 to-amber-500'
                                                         : 'bg-amber-400'
                                                 }`}
-                                                style={{ width: `${((currentQuestionIndex + 1) / (quiz?.totalQuestions || 10)) * 100}%` }}
+                                                style={{ width: `${((currentQuestionNumber || currentQuestionIndex + 1) / (quiz?.totalQuestions || 20)) * 100}%` }}
                                             >
-                                                {quiz?.totalQuestions && [Math.floor(quiz.totalQuestions * 0.25), Math.floor(quiz.totalQuestions * 0.5), Math.floor(quiz.totalQuestions * 0.75), quiz.totalQuestions].includes(currentQuestionIndex + 1) && (
+                                                {quiz?.totalQuestions && [Math.floor(quiz.totalQuestions * 0.25), Math.floor(quiz.totalQuestions * 0.5), Math.floor(quiz.totalQuestions * 0.75), quiz.totalQuestions].includes(currentQuestionNumber || currentQuestionIndex + 1) && (
                                                     <div className="absolute inset-0 bg-white/50 animate-shimmer" />
                                                 )}
                                             </div>
@@ -848,13 +888,35 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                                                     className="space-y-6"
                                                 >
                                                 <div className="flex items-start gap-4">
-                                                    <span className="w-10 h-10 bg-gray-900 text-white rounded-xl flex items-center justify-center font-black shrink-0 shadow-lg p-3">
-                                                        {currentQuestionNumber || currentQuestionIndex + 1}
-                                                    </span>
+                                                    <div className="flex flex-col items-center gap-1 shrink-0">
+                                                        <span className="w-10 h-10 bg-gray-900 text-white rounded-xl flex items-center justify-center font-black shadow-lg">
+                                                            {currentQuestionNumber || currentQuestionIndex + 1}
+                                                        </span>
+                                                        {(q as any).cefrLevel && (
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                                                                (q as any).cefrLevel === 'A1' ? 'bg-emerald-100 text-emerald-700' :
+                                                                (q as any).cefrLevel === 'A2' ? 'bg-teal-100 text-teal-700' :
+                                                                (q as any).cefrLevel === 'B1' ? 'bg-amber-100 text-amber-700' :
+                                                                (q as any).cefrLevel === 'B2' ? 'bg-orange-100 text-orange-700' :
+                                                                (q as any).cefrLevel === 'C1' ? 'bg-rose-100 text-rose-700' :
+                                                                'bg-purple-100 text-purple-700'
+                                                            }`}>
+                                                                {(q as any).cefrLevel}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <h4 className="text-lg font-black text-gray-800 leading-snug pt-2">
                                                         {q.content}
                                                     </h4>
                                                 </div>
+
+                                                {/* Demo Mode: Show correct answer before selecting */}
+                                                {demoMode && q.correctAnswer && (
+                                                    <div className="ml-14 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
+                                                        <span className="bg-amber-400 text-amber-900 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Demo</span>
+                                                        <span className="text-sm font-bold text-amber-800">Đáp án đúng: <span className="text-amber-600">{q.correctAnswer}</span></span>
+                                                    </div>
+                                                )}
 
                                                 <div className="grid grid-cols-1 gap-3 pl-14">
                                                     {q.type === 'multiple_choice' && Array.isArray(q.options) && q.options.map((opt: string, optIdx: number) => (
@@ -976,108 +1038,118 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                                             );
                                         })()}
                                     </AnimatePresence>
+
+                                    {/* Demo Mode: Adaptive Metrics Overlay */}
+                                    {demoPaused && adaptiveMetrics && (
+                                        <div className="bg-gray-900 text-white rounded-2xl p-5 space-y-3 border border-gray-700 shadow-xl">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="bg-amber-400 text-amber-900 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Adaptive Debug</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                                <div className="bg-white/10 rounded-xl p-3">
+                                                    <p className="text-gray-400 text-xs">Kết quả</p>
+                                                    <p className={`font-bold ${adaptiveMetrics.isCorrect ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {adaptiveMetrics.isCorrect ? '✅ Chính xác' : '❌ Chưa chính xác'}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white/10 rounded-xl p-3">
+                                                    <p className="text-gray-400 text-xs">Trình độ hiện tại</p>
+                                                    <p className="font-black text-lg">{adaptiveMetrics.currentLevel}</p>
+                                                </div>
+                                                <div className="bg-white/10 rounded-xl p-3">
+                                                    <p className="text-gray-400 text-xs">Ability Score</p>
+                                                    <p className="font-mono font-bold">{adaptiveMetrics.abilityScore?.toFixed(2)}</p>
+                                                </div>
+                                                <div className="bg-white/10 rounded-xl p-3">
+                                                    <p className="text-gray-400 text-xs">Streak</p>
+                                                    <p className="font-bold">✓ {adaptiveMetrics.streakCorrect} / ✗ {adaptiveMetrics.streakWrong}</p>
+                                                </div>
+                                            </div>
+                                            {adaptiveMetrics.correctAnswer && (
+                                                <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-xl p-3">
+                                                    <p className="text-emerald-300 text-xs font-bold uppercase">Đáp án đúng</p>
+                                                    <p className="text-white font-bold text-sm">{adaptiveMetrics.correctAnswer}</p>
+                                                </div>
+                                            )}
+                                            {adaptiveMetrics.canStopEarly && (
+                                                <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl p-3">
+                                                    <p className="text-amber-300 text-xs font-bold uppercase">Có thể kết thúc sớm!</p>
+                                                    <p className="text-white text-sm">Đã đủ {adaptiveMetrics.minQuestions} câu với độ tin cậy cao.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
 
                         {step === 'results' && result && (
-                            <div className="space-y-12">
-                                {/* AI Diagnosis Header */}
-                                <div className="bg-linear-to-br from-indigo-700 via-blue-700 to-indigo-900 p-8 rounded-[48px] text-white shadow-2xl relative overflow-hidden group/header">
-                                    <Brain size={140} className="absolute -right-8 -bottom-8 text-white/5 rotate-12 group-hover/header:rotate-0 transition-transform duration-1000" />
-                                    <div className="relative z-10 space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs font-bold border border-white/5">
-                                                AI Diagnostic Result
-                                            </div>
-                                            <span className="text-[10px] font-bold text-indigo-200">
-                                                ID: #{sessionResult?.sessionId || result?.sessionId || 'AS-0000'}
-                                            </span>
+                            <div className="space-y-10">
+                                {/* Result Header */}
+                                <div className="bg-linear-to-br from-emerald-500 to-teal-600 p-8 rounded-[32px] text-white text-center relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+                                    <div className="relative z-10">
+                                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-xs font-bold mb-4">
+                                            Kết quả đánh giá
                                         </div>
-
-                                        <div className="space-y-2">
-                                            <p className="text-sm font-bold text-indigo-100 opacity-70">
-                                                Cấp độ đề xuất cho {selectedCategory?.name}:
+                                        <h3 className="text-3xl font-black mb-2">
+                                            Trình độ của bạn: {sessionResult?.finalLevel || result?.level || 'N/A'}
+                                        </h3>
+                                        {sessionResult && (
+                                            <p className="text-white/80 text-sm font-medium">
+                                                {sessionResult.correctAnswers}/{sessionResult.totalQuestions} câu đúng
+                                                {' • '}
+                                                Chính xác: {Math.round((sessionResult.accuracy || 0) * 100)}%
                                             </p>
-                                            <h3 className="text-4xl font-bold text-transparent bg-clip-text bg-linear-to-r from-white to-indigo-200 decoration-amber-400 decoration-4 underline-offset-10">
-                                                {sessionResult?.finalLevel || result?.level || 'N/A'}
-                                            </h3>
-                                            {sessionResult && (
-                                                <div className="flex items-center gap-4 mt-3 text-xs text-indigo-200">
-                                                    <span>Độ tin cậy: {Math.round((sessionResult.confidenceScore || 0) * 100)}%</span>
-                                                    <span>•</span>
-                                                    <span>Chính xác: {Math.round((sessionResult.accuracy || 0) * 100)}%</span>
-                                                    <span>•</span>
-                                                    <span>{sessionResult.totalQuestions} câu</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <p className="text-sm text-indigo-100/80 italic leading-relaxed pt-2 border-l-2 border-amber-400 pl-4">
-                                            {resultLoading 
-                                                ? 'Đang tải kết quả phân tích...'
-                                                : sessionResult?.recommendations?.aiAnalysis?.summary 
-                                                    || `Phân tích hoàn tất. Hệ thống đã tùy chỉnh lộ trình học tập phía dưới để tập trung vào các kiến thức trọng tâm của chặng **${sessionResult?.finalLevel || result?.level}**, giúp bạn tối ưu hóa thời gian tiếp thu.`
-                                            }
-                                        </p>
-                                        
-                                        {resultLoading && (
-                                            <div className="flex items-center gap-2 text-sm text-indigo-200">
-                                                <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
-                                                Đang tải chi tiết kết quả...
-                                            </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Roadmap flow */}
-                                <div className="space-y-8 relative px-2 mb-10">
-                                    <div className="absolute left-[35px] top-10 bottom-10 w-0.5 bg-gray-100 hidden sm:block border-l-2 border-dashed border-gray-200" />
-
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="h-0.5 flex-1 bg-gray-100"></div>
-                                        <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.3em]">Learning Roadmap</h4>
-                                        <div className="h-0.5 flex-1 bg-gray-100"></div>
+                                {/* Level Progress Visual */}
+                                <div className="bg-gray-50 rounded-3xl p-6 space-y-4">
+                                    <h4 className="text-lg font-bold text-gray-900">Lộ trình học tập của bạn</h4>
+                                    <p className="text-gray-600 text-sm leading-relaxed">
+                                        Hệ thống đã xác định bạn phù hợp với trình độ <span className="font-bold text-gray-900">{sessionResult?.finalLevel || result?.level}</span>.
+                                        Bạn sẽ học 4 kỹ năng <strong>Nghe, Nói, Đọc, Viết</strong> trong cùng một cấp độ theo khung CEFR.
+                                    </p>
+                                    <div className="flex gap-2">
+                                        {(() => {
+                                            const reverseMap: Record<string, string> = {
+                                                'Cơ bản': 'A1', 'Sơ cấp': 'A2', 'Trung cấp': 'B1',
+                                                'Trung cấp cao': 'B2', 'Nâng cao': 'C1', 'Thành thạo': 'C2',
+                                            };
+                                            const rawLevel = sessionResult?.finalLevel || result?.level || 'A1';
+                                            const current = reverseMap[rawLevel] || rawLevel;
+                                            const levels = ['A1','A2','B1','B2','C1','C2'];
+                                            const currentIdx = levels.indexOf(current);
+                                            return levels.map(lvl => {
+                                                const idx = levels.indexOf(lvl);
+                                                const isActive = idx === currentIdx;
+                                                const isPast = idx < currentIdx;
+                                                return (
+                                                    <div key={lvl} className={`flex-1 py-2 rounded-xl text-center text-xs font-bold ${
+                                                        isActive ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : isPast ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-400'
+                                                    }`}>
+                                                        {lvl}
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
                                     </div>
+                                </div>
 
-                                    <div className="space-y-6">
-                                        {result.suggestedCourses.length > 0 ? result.suggestedCourses.map((course, idx) => (
-                                            <div key={course.id} className="relative flex gap-6 items-start animate-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${idx * 150}ms` }}>
-                                                {/* Step Indicator */}
-                                                <div className="relative z-10 w-16 h-16 rounded-2xl bg-white border-2 border-indigo-600 flex flex-col items-center justify-center shrink-0 shadow-xl group hover:scale-110 transition-transform cursor-default">
-                                                    <span className="text-[10px] font-black text-indigo-600 uppercase">Bước</span>
-                                                    <span className="text-xl font-black text-slate-900">{idx + 1}</span>
-                                                    {idx === 0 && <div className="absolute inset-0 rounded-2xl border-2 border-indigo-600 animate-ping opacity-20"></div>}
-                                                </div>
-
-                                                {/* Course Item (Horizontal) */}
-                                                <div
-                                                    onClick={() => navigate(`/course/${course.id}`)}
-                                                    className="flex-1 bg-white p-5 rounded-[32px] border border-gray-100 hover:border-indigo-500 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all cursor-pointer flex items-center gap-5 group"
-                                                >
-                                                    <div className="w-24 h-16 rounded-2xl overflow-hidden bg-gray-50 shrink-0 relative">
-                                                        <img src={course.imageUrl || '/elearning-1.jpg'} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                                                        <div className="absolute inset-0 bg-indigo-900/10 group-hover:bg-transparent transition-colors" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <span className="text-[9px] font-bold px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full">{idx === 0 ? 'Bắt đầu' : 'Tiếp nối'}</span>
-                                                            <span className="text-[9px] font-bold text-gray-400">{course.duration || '0:00'}</span>
-                                                        </div>
-                                                        <h5 className="font-bold text-gray-900 text-sm group-hover:text-indigo-600 transition-colors">{course.title}</h5>
-                                                        <p className="text-[10px] text-gray-400 font-medium truncate">Xây dựng nền tảng {selectedCategory?.name} trong {course.duration || 'vài giờ'}</p>
-                                                    </div>
-                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 opacity-0 group-hover:opacity-100 -translate-x-4 group-hover:translate-x-0 transition-all">
-                                                        <ChevronRight size={20} />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )) : (
-                                            <div className="text-center py-16 bg-gray-50 rounded-[40px] border-2 border-dashed border-gray-200">
-                                                <p className="text-gray-400 font-medium">Chưa có dữ liệu lộ trình cho cấp độ này.</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                {/* CTA Buttons */}
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <button
+                                        onClick={() => {
+                                            onClose();
+                                            navigate('/my-path');
+                                        }}
+                                        className="flex-1 px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl flex items-center justify-center gap-2"
+                                    >
+                                        <Compass size={20} />
+                                        Bắt đầu lộ trình học
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -1085,7 +1157,7 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
 
                     {/* Cancel Confirm Dialog */}
                     {showCancelConfirm && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
                             <div className="absolute inset-0 bg-black/50" onClick={() => setShowCancelConfirm(false)} />
                             <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
                                 <div className="flex items-center gap-3 mb-4">
@@ -1119,36 +1191,67 @@ const LearningPathAssistant: React.FC<LearningPathAssistantProps> = ({ isOpen, o
                         {step === 'taking-test' && (
                             <>
                                 <button onClick={() => setShowCancelConfirm(true)} className="px-6 py-3 font-bold text-sm text-gray-500 hover:text-gray-900 cursor-pointer">Hủy bài test</button>
-                                <button
-                                    onClick={currentQuestionIndex >= (quiz?.totalQuestions || 10) - 1 ? () => handleCompleteTest() : handleNextQuestion}
-                                    disabled={loading || !quiz?.questions[currentQuestionIndex]?.id || !answers[quiz?.questions[currentQuestionIndex]?.id]}
-                                    className={`px-10 py-4 text-white rounded-2xl font-black text-sm transition-all flex items-center gap-2 cursor-pointer relative overflow-hidden ${
-                                        currentQuestionIndex < 5 
-                                            ? 'bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-500/30' 
-                                            : currentQuestionIndex < 10
-                                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-xl shadow-indigo-500/40'
-                                                : currentQuestionIndex < 15
-                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-xl shadow-purple-500/50 animate-pulse'
-                                                    : 'bg-gradient-to-r from-purple-600 via-pink-600 to-red-600 hover:from-purple-700 hover:via-pink-700 hover:to-red-700 shadow-xl shadow-red-500/60 animate-pulse scale-105'
-                                    } disabled:opacity-50`}
-                                >
-                                    {loading ? 'Đang tải...' : currentQuestionIndex >= (quiz?.totalQuestions || 10) - 1 ? 'Hoàn thành' : (
-                                        <>
-                                            Tiếp theo
-                                            {currentQuestionIndex >= 10 && <Flame size={18} className="animate-bounce" />}
-                                        </>
-                                    )}
-                                    {currentQuestionIndex < 10 && <CheckCircle2 size={18} />}
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    {(() => {
+                                        const showSkip = currentQuestionNumber
+                                            ? currentQuestionNumber < (quiz?.totalQuestions || 20)
+                                            : currentQuestionIndex < (quiz?.totalQuestions || 20) - 1;
+                                        return showSkip && (
+                                            <button
+                                                onClick={handleSkipQuestion}
+                                                disabled={loading}
+                                                className="px-6 py-3 font-bold text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-50 cursor-pointer"
+                                            >
+                                                Bỏ qua
+                                            </button>
+                                        );
+                                    })()}
+                                    <button
+                                        onClick={demoPaused ? proceedToNextQuestion : (currentQuestionNumber ? (currentQuestionNumber >= (quiz?.totalQuestions || 20) ? () => handleCompleteTest() : handleNextQuestion) : (currentQuestionIndex >= (quiz?.totalQuestions || 20) - 1 ? () => handleCompleteTest() : handleNextQuestion))}
+                                        disabled={loading || (demoPaused ? false : (!quiz?.questions[currentQuestionIndex]?.id || !answers[quiz?.questions[currentQuestionIndex]?.id]))}
+                                        className={`px-10 py-4 text-white rounded-2xl font-black text-sm transition-all flex items-center gap-2 cursor-pointer relative overflow-hidden ${
+                                            demoPaused
+                                                ? 'bg-amber-500 hover:bg-amber-600 shadow-xl shadow-amber-500/40'
+                                                : (currentQuestionNumber || currentQuestionIndex + 1) < 5 
+                                                    ? 'bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-500/30' 
+                                                    : (currentQuestionNumber || currentQuestionIndex + 1) < 10
+                                                        ? 'bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-xl shadow-indigo-500/40'
+                                                        : (currentQuestionNumber || currentQuestionIndex + 1) < 15
+                                                            ? 'bg-linear-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-xl shadow-purple-500/50 animate-pulse'
+                                                            : 'bg-linear-to-r from-purple-600 via-pink-600 to-red-600 hover:from-purple-700 hover:via-pink-700 hover:to-red-700 shadow-xl shadow-red-500/60 animate-pulse scale-105'
+                                        } disabled:opacity-50`}
+                                    >
+                                        {loading ? 'Đang tải...' : (() => {
+                                            if (demoPaused) return 'Tiếp theo →';
+                                            const isComplete = currentQuestionNumber
+                                                ? currentQuestionNumber >= (quiz?.totalQuestions || 20)
+                                                : currentQuestionIndex >= (quiz?.totalQuestions || 20) - 1;
+                                            const showFlame = currentQuestionNumber 
+                                                ? currentQuestionNumber >= 10 
+                                                : currentQuestionIndex >= 10;
+                                            
+                                            if (isComplete) return 'Hoàn thành';
+                                            return (
+                                                <React.Fragment>
+                                                    Tiếp theo
+                                                    {showFlame && <Flame size={18} className="animate-bounce" />}
+                                                </React.Fragment>
+                                            );
+                                        })()}
+                                        {(() => {
+                                            if (demoPaused) return null;
+                                            const showCheck = currentQuestionNumber 
+                                                ? currentQuestionNumber < 10 
+                                                : currentQuestionIndex < 10;
+                                            return showCheck ? <CheckCircle2 size={18} /> : null;
+                                        })()}
+                                    </button>
+                                </div>
                             </>
                         )}
                         {step === 'results' && (
-                            <div className="w-full flex justify-between gap-4">
-                                <button onClick={() => setStep('choose-category')} className="px-6 py-4 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm hover:bg-gray-200 transition-all cursor-pointer">Chọn chủ đề khác</button>
-                                <button onClick={() => {
-                                    if (onComplete) onComplete();
-                                    onClose();
-                                }} className="px-10 py-4 bg-gray-900 text-white rounded-2xl font-medium text-sm hover:bg-blue-600 transition-all shadow-xl shadow-blue-500/20 cursor-pointer">Khám phá lộ trình</button>
+                            <div className="w-full flex justify-center">
+                                <span className="text-sm text-gray-500">Bạn có thể đóng cửa sổ này để tiếp tục học.</span>
                             </div>
                         )}
                     </div>

@@ -14,11 +14,16 @@ export type BackendCourseListItem = {
   published?: boolean;
   createdAt?: string;
   creator?: { id: string | number; name: string; username?: string };
+  enrollmentCount?: number;
+  students?: number;
+  enrollments?: number;
+  isRequired?: boolean;
 };
 
 export type BackendFormattedCourse = Partial<FrontendCourse> & {
   id: string | number;
   title: string;
+  creatorId?: string | number;
 };
 
 export type BackendLecture = {
@@ -68,6 +73,7 @@ function normalizeIsPreview(value: unknown): boolean {
 
 export type FrontendCourse = {
   id: string;
+  creatorId?: string;
   title: string;
   teacher: string;
   teacherAvatar?: string;
@@ -77,6 +83,7 @@ export type FrontendCourse = {
   reviewCount: number;
   students: number;
   level: "Cơ bản" | "Trung cấp" | "Nâng cao" | "Mọi cấp độ";
+  isRequired?: boolean;
   totalLessons: number;
   duration: string;
   description: string;
@@ -99,6 +106,12 @@ export type FrontendCourse = {
   tags: string[];
   price: number;
   lastUpdated: string;
+  // Duration settings for expiration system
+  durationType?: 'lifetime' | 'fixed' | 'subscription';
+  durationValue?: number;
+  durationUnit?: 'days' | 'months' | 'years';
+  renewalDiscountPercent?: number;
+  gracePeriodDays?: number;
 };
 
 export function mapBackendCourseToFrontend(
@@ -130,6 +143,7 @@ export function mapBackendCourseToFrontend(
 
   return {
     id: String(course.id),
+    creatorId: course.creator?.id != null ? String(course.creator.id) : undefined,
     title: course.title,
     teacher: course.creator?.name || "",
     teacherAvatar:
@@ -138,10 +152,11 @@ export function mapBackendCourseToFrontend(
       (course.creator as any)?.imageUrl ||
       undefined,
     image: course.imageUrl || "/elearning-1.jpg",
-    category: "Tất cả",
+    category: (course as any).Category?.name || (course as any).category || "Khác",
+    isRequired: (course as any).isRequired ?? false,
     rating: Number(course.rating ?? 0),
     reviewCount: Number(course.reviewCount ?? 0),
-    students: 0,
+    students: course.enrollmentCount || course.students || course.enrollments || 0,
     level: "Mọi cấp độ",
     totalLessons,
     duration: "",
@@ -152,6 +167,12 @@ export function mapBackendCourseToFrontend(
     tags: [],
     price: course.price || 0,
     lastUpdated: course.createdAt || "",
+    // Duration settings
+    durationType: (course as any).durationType,
+    durationValue: (course as any).durationValue,
+    durationUnit: (course as any).durationUnit,
+    renewalDiscountPercent: (course as any).renewalDiscountPercent,
+    gracePeriodDays: (course as any).gracePeriodDays,
   };
 }
 
@@ -176,6 +197,7 @@ export const courseService = {
       ) {
         return {
           id: String(maybe.id),
+          creatorId: maybe.creatorId != null ? String(maybe.creatorId) : undefined,
           title: String(maybe.title),
           teacher: maybe.teacher || "",
           teacherAvatar: maybe.teacherAvatar,
@@ -185,6 +207,7 @@ export const courseService = {
           reviewCount: Number(maybe.reviewCount ?? 0),
           students: Number(maybe.students ?? 0),
           level: (maybe.level as FrontendCourse["level"]) || "Mọi cấp độ",
+          isRequired: !!maybe.isRequired,
           totalLessons: Number(maybe.totalLessons ?? 0),
           duration: String(maybe.duration ?? ""),
           description: String(maybe.description ?? ""),
@@ -232,6 +255,7 @@ export const courseService = {
     ) {
       return {
         id: String(maybe.id),
+        creatorId: maybe.creatorId != null ? String(maybe.creatorId) : undefined,
         title: String(maybe.title),
         teacher: maybe.teacher || "",
         teacherAvatar: maybe.teacherAvatar,
@@ -241,6 +265,137 @@ export const courseService = {
         reviewCount: Number(maybe.reviewCount ?? 0),
         students: Number(maybe.students ?? 0),
         level: (maybe.level as FrontendCourse["level"]) || "Mọi cấp độ",
+        isRequired: !!maybe.isRequired,
+        totalLessons: Number(maybe.totalLessons ?? 0),
+        duration: String(maybe.duration ?? ""),
+        description: String(maybe.description ?? ""),
+        willLearn: Array.isArray(maybe.willLearn) ? maybe.willLearn : [],
+        requirements: Array.isArray(maybe.requirements)
+          ? maybe.requirements
+          : [],
+        curriculum: Array.isArray(maybe.curriculum)
+          ? maybe.curriculum.map((m: any) => ({
+              ...m,
+              lessons: Array.isArray(m?.lessons)
+                ? m.lessons.map((l: any) => ({
+                    ...l,
+                    isPreview: Boolean(l?.isPreview),
+                  }))
+                : [],
+            }))
+          : [],
+        tags: Array.isArray(maybe.tags) ? maybe.tags : [],
+        price: Number(maybe.price ?? 0),
+        lastUpdated: String(maybe.lastUpdated ?? ""),
+        // Duration settings
+        durationType: (maybe as any).durationType,
+        durationValue: (maybe as any).durationValue,
+        durationUnit: (maybe as any).durationUnit,
+        renewalDiscountPercent: (maybe as any).renewalDiscountPercent,
+        gracePeriodDays: (maybe as any).gracePeriodDays,
+      };
+    }
+
+    // Fallback to legacy transform
+    const raw = data.course as BackendCourseDetail;
+    const curriculum = (raw.Chapters || []).map((ch: any) => ({
+      id: String(ch.id || ""),
+      title: String(ch.title || ""),
+      lessons: (ch.lectures || []).map((l: any) => ({
+        id: String(l.id || ""),
+        title: String(l.title || ""),
+        duration: l.duration ? `${Math.ceil(l.duration / 60)} phút` : "0 phút",
+        isPreview: Boolean(l.isPreview),
+        videoUrl: l.isPreview ? l.contentUrl || l.videoUrl : null,
+        type: String(l.type || "video"),
+      })),
+    }));
+
+    const totalLessons = curriculum.reduce(
+      (sum: number, m: any) => sum + (m.lessons?.length || 0),
+      0
+    );
+
+    return {
+      id: String(raw.id),
+      title: String(raw.title || ""),
+      teacher: String(raw.creator?.name || ""),
+      teacherAvatar: `https://i.pravatar.cc/150?u=${raw.creator?.username || "teacher"}`,
+      image: raw.imageUrl || "/elearning-1.jpg",
+      category: String((raw as any).Category?.name || "Khác"),
+      rating: Number(raw.rating ?? 0),
+      reviewCount: Number(raw.reviewCount ?? 0),
+      students: Number(raw.students ?? 0),
+      level: (raw.level as FrontendCourse["level"]) || "Mọi cấp độ",
+      isRequired: !!raw.isRequired,
+      totalLessons,
+      duration: raw.duration ? String(raw.duration) : "",
+      description: String(raw.description || ""),
+      willLearn: Array.isArray((raw as any).willLearn) ? (raw as any).willLearn : [],
+      requirements: Array.isArray((raw as any).requirements) ? (raw as any).requirements : [],
+      curriculum,
+      tags: Array.isArray((raw as any).tags) ? (raw as any).tags : [],
+      price: Number(raw.price ?? 0),
+      lastUpdated: String((raw as any).updatedAt ?? ""),
+      // Duration settings
+      durationType: (raw as any).durationType,
+      durationValue: (raw as any).durationValue,
+      durationUnit: (raw as any).durationUnit,
+      renewalDiscountPercent: (raw as any).renewalDiscountPercent,
+      gracePeriodDays: (raw as any).gracePeriodDays,
+    };
+  },
+
+  // Get enrolled course content with full video URLs (for enrolled students only)
+  async getEnrolledCourseContent(courseId: string): Promise<{
+    course: any;
+    chapters: any[];
+    enrollment: any;
+  }> {
+    const data = await apiRequest<{
+      success: boolean;
+      data: {
+        course: any;
+        chapters: any[];
+        enrollment: any;
+      };
+    }>(`student/enrolled-courses/${courseId}/content`, {
+      method: "GET",
+      auth: true,
+    });
+    // Check if response has nested data or direct data
+    const result = data.data || data;
+    return result;
+  },
+
+  // Legacy getCourseDetail for backward compatibility
+  async getCourseDetailLegacy(id: string): Promise<FrontendCourse> {
+    const data = await apiRequest<{
+      course: BackendFormattedCourse | BackendCourseDetail;
+    }>(`courses/${id}`, {
+      method: "GET",
+      auth: false,
+    });
+
+    const maybe = data.course as BackendFormattedCourse;
+    if (
+      typeof maybe.category === "string" &&
+      typeof maybe.teacher === "string" &&
+      Array.isArray(maybe.curriculum)
+    ) {
+      return {
+        id: String(maybe.id),
+        creatorId: maybe.creatorId != null ? String(maybe.creatorId) : undefined,
+        title: String(maybe.title),
+        teacher: maybe.teacher || "",
+        teacherAvatar: maybe.teacherAvatar,
+        image: maybe.image || "/elearning-1.jpg",
+        category: maybe.category || "Khác",
+        rating: Number(maybe.rating ?? 0),
+        reviewCount: Number(maybe.reviewCount ?? 0),
+        students: Number(maybe.students ?? 0),
+        level: (maybe.level as FrontendCourse["level"]) || "Mọi cấp độ",
+        isRequired: !!maybe.isRequired,
         totalLessons: Number(maybe.totalLessons ?? 0),
         duration: String(maybe.duration ?? ""),
         description: String(maybe.description ?? ""),

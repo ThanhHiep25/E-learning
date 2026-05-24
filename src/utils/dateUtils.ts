@@ -2,6 +2,19 @@ import { formatDistanceToNow, format, parseISO, type Locale } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 /**
+ * Get avatar URL with fallback to default
+ * @param avatarUrl The avatar URL from user data
+ * @returns Avatar URL or default avatar path
+ */
+export const getAvatarUrl = (avatarUrl: string | null | undefined): string => {
+  if (avatarUrl && avatarUrl.trim() !== 'https://cdn-icons-png.flaticon.com/512/149/149071.png') {
+    return avatarUrl;
+  }
+  // Default avatar - you can replace this path with your own image
+  return '/default-avatar.png';
+};
+
+/**
  * Safely format a date string using formatDistanceToNow
  * @param dateStr The date string to format
  * @param options Options for formatting

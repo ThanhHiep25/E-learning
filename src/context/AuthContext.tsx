@@ -1,16 +1,16 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { User } from '../config/users-data';
-import { ApiError, tokenStorage } from '../services/api';
+import { ApiError, tokenStorage, setUnauthorizedHandler, clearUnauthorizedHandler } from '../services/api';
 import { authService } from '../services/auth.service';
 import { enrollmentService } from '../services/enrollment.service';
 import { useEnrollmentStore } from '../store/useEnrollmentStore';
-import { useCourseStore } from '../store/useCourseStore';
+import toast from 'react-hot-toast';
 
 interface AuthContextType {
     user: User | null;
     login: (email: string, password: string) => Promise<User | null>;
     register: (userData: Partial<User>) => Promise<boolean>;
-    verifyEmailCode: (token: string) => Promise<boolean>;
+    verifyEmailCode: (code: string) => Promise<boolean>;
     forgotPassword: (email: string) => Promise<boolean>;
     updateUser: (userData: Partial<User>) => Promise<boolean>;
     logout: () => void;
@@ -22,31 +22,43 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    // 🛡️ P0-3 FIX: Track bootstrap state to prevent race with login
+    const isBootstrappingRef = useRef(true);
     const resetEnrollments = useEnrollmentStore((s) => s.reset);
     const syncEnrollments = useEnrollmentStore((s) => s.syncEnrollments);
-    const resetCourses = useCourseStore((s) => s.reset);
 
+    // 🛡️ P0-3 FIX: Bootstrap with proper cleanup and race prevention
     useEffect(() => {
+        isBootstrappingRef.current = true;
+        
         const bootstrap = async () => {
             try {
                 const token = tokenStorage.get();
                 if (!token) {
                     setIsLoading(false);
+                    isBootstrappingRef.current = false;
                     return;
                 }
 
                 const me = await authService.me();
-                setUser(me as unknown as User);
-                localStorage.setItem('elearning_user', JSON.stringify(me));
+                // Only update if still bootstrapping (not interrupted by login)
+                if (isBootstrappingRef.current) {
+                    setUser(me as unknown as User);
+                    localStorage.setItem('elearning_user', JSON.stringify(me));
+                }
             } catch (err) {
-                tokenStorage.clear();
-                localStorage.removeItem('elearning_user');
-                setUser(null);
-                resetEnrollments();
-                resetCourses();
-                enrollmentService.clearCache();
+                if (isBootstrappingRef.current) {
+                    tokenStorage.clear();
+                    localStorage.removeItem('elearning_user');
+                    setUser(null);
+                    resetEnrollments();
+                    enrollmentService.clearCache();
+                }
             } finally {
-                setIsLoading(false);
+                if (isBootstrappingRef.current) {
+                    setIsLoading(false);
+                    isBootstrappingRef.current = false;
+                }
             }
         };
 
@@ -59,22 +71,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         syncEnrollments();
     }, [user]);
 
+    // 🛡️ P0-3 FIX: Login with bootstrap race prevention
     const login = async (email: string, password: string): Promise<User | null> => {
+        // Prevent race with bootstrap - mark bootstrap as done
+        isBootstrappingRef.current = false;
+        
         try {
             enrollmentService.clearCache();
             resetEnrollments();
-            resetCourses();
 
-            const result = await authService.login({ email, password });
-            const loggedInUser = result.user as unknown as User;
-            setUser(loggedInUser);
-            localStorage.setItem('elearning_user', JSON.stringify(result.user));
-            return loggedInUser;
+            // Login to get token, then fetch complete user profile from /auth/me
+            await authService.login({ email, password });
+            const fullUser = await authService.me();
+            setUser(fullUser as unknown as User);
+            localStorage.setItem('elearning_user', JSON.stringify(fullUser));
+            return fullUser as unknown as User;
         } catch (err) {
             if (err instanceof ApiError && err.status === 403) {
                 throw err;
             }
             return null;
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -97,8 +115,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 role: "student",
             });
             if (result.token) {
-                setUser(result.user as unknown as User);
-                localStorage.setItem('elearning_user', JSON.stringify(result.user));
+                // Fetch complete user profile from /auth/me to ensure all fields (including avatar) are loaded
+                const fullUser = await authService.me();
+                setUser(fullUser as unknown as User);
+                localStorage.setItem('elearning_user', JSON.stringify(fullUser));
             }
             return true;
         } catch (err) {
@@ -106,13 +126,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const verifyEmailCode = async (token: string): Promise<boolean> => {
+    const verifyEmailCode = async (code: string): Promise<boolean> => {
         try {
-            const result = await authService.verifyEmailCode(token);
-            if (result.token) {
-                setUser(result.user as unknown as User);
-                localStorage.setItem('elearning_user', JSON.stringify(result.user));
-            }
+            // Verify code and get token, then fetch complete user profile from /auth/me
+            await authService.verifyEmailCode(code);
+            const fullUser = await authService.me();
+            setUser(fullUser as unknown as User);
+            localStorage.setItem('elearning_user', JSON.stringify(fullUser));
             return true;
         } catch (err) {
             return false;
@@ -156,15 +176,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('elearning_user');
         authService.logout();
         resetEnrollments();
-        resetCourses();
         enrollmentService.clearCache();
 
         try {
             localStorage.removeItem('enrollment-storage');
-            localStorage.removeItem('course-storage');
         } catch {
         }
     };
+
+    // 🛡️ P1-2 FIX: Register global 401 handler
+    useEffect(() => {
+        const handleUnauthorized = () => {
+            // Only show toast if user was actually logged in (had a token)
+            const hadToken = !!localStorage.getItem('elearning_token');
+            // Clear user state
+            setUser(null);
+            resetEnrollments();
+            enrollmentService.clearCache();
+            // Show notification only if previously authenticated
+            if (hadToken) {
+                toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            }
+        };
+
+        setUnauthorizedHandler(handleUnauthorized);
+
+        return () => {
+            clearUnauthorizedHandler();
+        };
+    }, [resetEnrollments]);
 
     return (
         <AuthContext.Provider value={{ user, login, register, verifyEmailCode, forgotPassword, updateUser, logout, isLoading }}>

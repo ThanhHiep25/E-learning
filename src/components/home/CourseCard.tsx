@@ -1,157 +1,173 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Users, BookOpen, Heart, ArrowRight, PlayCircle } from 'lucide-react';
+import { Star, Users, Clock, PlayCircle, ArrowRight, CheckCircle } from 'lucide-react';
 import { type FrontendCourse } from '../../services/course.service';
 import { useEnrollmentStore } from '../../store/useEnrollmentStore';
-import { useCourseStore } from '../../store/useCourseStore';
 
 interface CourseCardProps {
     course: FrontendCourse;
+    progress?: number;
+    isEnrolled?: boolean;
 }
 
-const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
+const LEVEL_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+    beginner:          { label: 'A1 Beginner',         color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+    elementary:        { label: 'A2 Elementary',       color: 'text-sky-700',     bg: 'bg-sky-50 border-sky-200' },
+    intermediate:      { label: 'B1 Intermediate',     color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200' },
+    'upper-intermediate': { label: 'B2 Upper-Int.',    color: 'text-violet-700',  bg: 'bg-violet-50 border-violet-200' },
+    advanced:          { label: 'C1 Advanced',         color: 'text-purple-700',  bg: 'bg-purple-50 border-purple-200' },
+    proficiency:       { label: 'C2 Proficiency',      color: 'text-rose-700',    bg: 'bg-rose-50 border-rose-200' },
+};
+
+const CourseCard: React.FC<CourseCardProps> = ({ course, progress, isEnrolled: isEnrolledProp }) => {
     const navigate = useNavigate();
     const { enrolledCourses } = useEnrollmentStore();
-    const { loadCourseDetail, getCurriculumIndex } = useCourseStore();
-    const isEnrolled = enrolledCourses.some(item => String(item.id) === String(course.id));
+    const isEnrolled = isEnrolledProp ?? enrolledCourses.some(item => String(item.id) === String(course.id));
 
     const teacherInitials = (name: string) => {
-        const parts = String(name || '')
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean);
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
         const first = parts[0]?.[0] || '';
         const last = parts.length > 1 ? parts[parts.length - 1]?.[0] : '';
         return `${first}${last}`.toUpperCase() || 'GV';
     };
 
-    const handleAction = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (isEnrolled) {
-            // Kiểm tra xem đã có curriculum chưa
-            let idx = getCurriculumIndex(String(course.id));
-            if (!idx || idx.lessonIds.length === 0) {
-                // Nếu chưa có (thì từ list), tải detail để lấy first lesson
-                const detail = await loadCourseDetail(String(course.id));
-                idx = detail ? getCurriculumIndex(String(course.id)) : undefined;
-            }
-
-            if (idx && idx.lessonIds.length > 0) {
-                navigate(`/course/${course.id}/lesson/${idx.lessonIds[0]}`);
-            } else {
-                // Fallback nếu không tìm được bài học nào
-                navigate(`/course/${course.id}/lesson`);
-            }
-        } else {
-            navigate(`/course/${course.id}`);
-        }
-    };
+    const levelCfg = LEVEL_CONFIG[course.level?.toLowerCase()] || { label: course.level, color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200' };
+    const isCompleted = typeof progress === 'number' && progress >= 100;
 
     return (
         <div
             onClick={() => navigate(`/course/${course.id}`)}
-            className="group bg-white cursor-pointer rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-2xl hover:shadow-amber-100/50 transition-all duration-500 hover:-translate-y-2 flex flex-col h-full relative"
+            className="group bg-white cursor-pointer rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-gray-200/60 transition-all duration-300 hover:-translate-y-1 flex flex-col h-full"
         >
-            {/* Image & Badges */}
-            <div className="relative aspect-16/10 overflow-hidden">
+            {/* Thumbnail */}
+            <div className="relative aspect-video overflow-hidden bg-gray-100">
                 <img
                     src={course.image || '/elearning-1.jpg'}
                     alt={course.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
-                <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                {/* Gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
 
-                {/* Category Badge */}
-                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-amber-600 uppercase tracking-wider shadow-sm">
-                    {course.category}
+                {/* Top row: category + required badge */}
+                <div className="absolute top-3 left-3 right-3 flex justify-between items-start gap-2">
+                    <div className="flex items-start gap-2 flex-wrap">
+                        <span className="bg-black/50 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                            {course.category}
+                        </span>
+                        {course.isRequired && (
+                            <span className="bg-rose-500 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                Bắt buộc
+                            </span>
+                        )}
+                    </div>
+                    {isEnrolled && isCompleted && (
+                        <span className="bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0">
+                            <CheckCircle size={10} /> Hoàn thành
+                        </span>
+                    )}
                 </div>
 
+                {/* Bottom row: level + duration */}
+                <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border backdrop-blur-sm bg-white/90 ${levelCfg.color} ${levelCfg.bg}`}>
+                        {levelCfg.label}
+                    </span>
+                    {course.duration && (
+                        <span className="flex items-center gap-1 text-white text-[10px] font-medium drop-shadow">
+                            <Clock size={10} /> {course.duration}
+                        </span>
+                    )}
+                </div>
+            </div>
 
-                {/* Level Badge */}
-                <div className="absolute bottom-4 left-4 flex gap-2">
-                    <span className="bg-amber-500/90 backdrop-blur-md text-white px-2 py-0.5 rounded-md text-[10px] font-bold">
-                        {course.level}
+            {/* Body */}
+            <div className="p-4 flex flex-col flex-1 gap-3">
+                {/* Rating */}
+                <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-0.5">
+                        {[1,2,3,4,5].map(i => (
+                            <Star key={i} size={11} className={i <= Math.round(course.rating) ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />
+                        ))}
+                    </div>
+                    <span className="text-xs font-bold text-gray-700">{Number(course.rating).toFixed(1)}</span>
+                    <span className="text-xs text-gray-400">({course.reviewCount?.toLocaleString()})</span>
+                </div>
+
+                {/* Title */}
+                <h3 className="text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-amber-600 transition-colors">
+                    {course.title}
+                </h3>
+
+                {/* Teacher */}
+                <div className="flex items-center gap-2">
+                    {course.teacherAvatar ? (
+                        <img src={course.teacherAvatar} alt={course.teacher} className="w-6 h-6 rounded-full object-cover ring-1 ring-gray-200" />
+                    ) : (
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center text-[9px] font-black shrink-0">
+                            {teacherInitials(course.teacher)}
+                        </div>
+                    )}
+                    <span className="text-xs text-gray-500 truncate">{course.teacher}</span>
+                </div>
+
+                {/* Stats row */}
+                <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                        <Users size={11} className="text-blue-400" />
+                        {course.students?.toLocaleString()}
+                    </span>
+                    <span className="w-px h-3 bg-gray-200" />
+                    <span className="flex items-center gap-1">
+                        <PlayCircle size={11} className="text-violet-400" />
+                        {course.totalLessons} bài học
                     </span>
                 </div>
-            </div>
 
-            {/* Content */}
-            <div className="p-6 flex flex-col flex-1 gap-2">
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1 text-amber-500">
-                            <Star size={14} fill="currentColor" />
-                            <span className="text-sm font-bold text-gray-700">{course.rating}</span>
-                            <span className="text-xs text-gray-400">({course.reviewCount})</span>
+                {/* Progress bar */}
+                {isEnrolled && typeof progress === 'number' && progress > 0 && (
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-medium">
+                            <span className="text-gray-400">Tiến độ</span>
+                            <span className={isCompleted ? 'text-emerald-600' : 'text-amber-600'}>{Math.round(progress)}%</span>
                         </div>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                // Heart logic
-                            }}
-                            className="text-gray-300 hover:text-red-500 transition-colors cursor-pointer"
-                        >
-                            <Heart size={18} />
-                        </button>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-700 ${isCompleted ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-amber-400 to-orange-400'}`}
+                                style={{ width: `${progress}%` }}
+                            />
+                        </div>
                     </div>
+                )}
 
-                    <h3 className="text-lg font-bold text-gray-800 line-clamp-2 min-h-14 group-hover:text-amber-600 transition-colors">
-                        {course.title}
-                    </h3>
-
-                    <p className="text-sm text-gray-600 line-clamp-2">{course.description}</p>
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-3 py-3 border-y border-gray-50">
-                    <div className="flex items-center gap-2 text-gray-500">
-                        <Users size={14} className="text-blue-500" />
-                        <span className="text-xs font-medium">{course.students.toLocaleString()} bạn</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-500">
-                        <BookOpen size={14} className="text-emerald-500" />
-                        <span className="text-xs font-medium">{course.totalLessons} bài học</span>
-                    </div>
-                </div>
-
-                {/* Teacher & Price */}
-                <div className="mt-auto pt-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        {course.teacherAvatar ? (
-                            <img src={course.teacherAvatar} alt={course.teacher} className="w-8 h-8 rounded-full border border-amber-100" />
-                        ) : (
-                            <div className="w-8 h-8 rounded-full border border-amber-100 bg-amber-50 text-amber-700 flex items-center justify-center text-[10px] font-black">
-                                {teacherInitials(course.teacher)}
-                            </div>
-                        )}
-                        <span className="text-xs font-semibold text-gray-600">{course.teacher}</span>
-                    </div>
-                    <div className="text-right">
-                        <span className={`text-[10px] font-black ${course.price === 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-amber-600 bg-amber-50 border-amber-100'} px-2 py-1 rounded tracking-widest border`}>
-                            {course.price === 0 ? 'MIỄN PHÍ' : `${course.price?.toLocaleString()}đ`}
+                {/* Footer: price + CTA */}
+                <div className="mt-auto pt-3 border-t border-gray-50 flex items-center justify-between gap-3">
+                    {!isEnrolled && (
+                        <span className={`text-base font-black leading-none ${course.price === 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                            {course.price === 0
+                                ? 'Miễn phí'
+                                : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(course.price || 0)
+                            }
                         </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Hover Action */}
-            <div className="absolute inset-x-0 bottom-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-linear-to-t from-white via-white to-transparent pt-10">
-                <button
-                    onClick={handleAction}
-                    className={`w-full ${isEnrolled ? 'bg-emerald-600' : 'bg-gray-900'} text-white py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-amber-600 transition-all cursor-pointer shadow-xl`}
-                >
-                    {isEnrolled ? (
-                        <>
-                            Học tiếp ngay
-                            <PlayCircle size={16} />
-                        </>
-                    ) : (
-                        <>
-                            Xem chi tiết
-                            <ArrowRight size={16} />
-                        </>
                     )}
-                </button>
+                    {isEnrolled ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/course/${course.id}/dashboard`); }}
+                            className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-500 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        >
+                            {isCompleted ? 'Xem lại' : 'Tiếp tục'}
+                            <ArrowRight size={13} />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/course/${course.id}`); }}
+                            className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm shadow-amber-200 hover:shadow-amber-300"
+                        >
+                            Xem khóa học
+                            <ArrowRight size={13} />
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );

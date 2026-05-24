@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useEnrollmentStore } from '../../store/useEnrollmentStore';
 import {
-    Search, Menu, ChevronDown, LogOut, User as UserIcon, BookOpen, Layout, GraduationCap
+    Search, Menu, ChevronDown, LogOut, User as UserIcon, BookOpen, Layout, GraduationCap, Receipt, Target, Library
 } from 'lucide-react';
 import AuthModal from '../auth/AuthModal';
-import { navigationConfig } from '../../config/navigation';
+import { navigationConfig, placementTestCta } from '../../config/navigation';
 import SearchSpotlight from './SearchSpotlight';
 import { useAuth } from '../../context/AuthContext';
 import NotificationBell from './NotificationBell';
+import { categoryService, type BackendCategory } from '../../services/category.service';
 
 interface HeaderProps {
     onMenuClick: () => void;
@@ -22,11 +23,43 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+    const [categories, setCategories] = useState<BackendCategory[]>([]);
+
+    // Close user menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+                setIsUserMenuOpen(false);
+            }
+        };
+
+        if (isUserMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isUserMenuOpen]);
 
     const openAuth = (mode: 'LOGIN' | 'REGISTER') => {
         setAuthMode(mode);
         setIsAuthOpen(true);
     };
+
+    // Fetch categories for submenu
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const data = await categoryService.listCategories();
+                setCategories(data);
+            } catch (error) {
+                console.error('Failed to fetch categories:', error);
+            }
+        };
+        fetchCategories();
+    }, []);
 
     // Keyboard shortcut to open search (Cmd+K or Ctrl+K)
     React.useEffect(() => {
@@ -62,10 +95,10 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                 onClose={() => setIsSearchOpen(false)}
             />
 
-            <div className="sticky top-0 z-40 w-full shadow-sm">
+            <div className="sticky top-0 z-50 w-full shadow-sm">
 
                 <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-gray-100/50 w-full transition-all duration-300">
-                    <div className="max-w-[1440px] h-full mx-auto px-6 md:px-10 flex items-center justify-between gap-8">
+                    <div className="max-w-[1600px] h-full mx-auto px-4 md:px-6 flex items-center justify-between gap-4">
                         {/* Logo & Brand */}
                         <div className='flex items-center gap-1 min-w-fit'>
                             <button
@@ -114,52 +147,75 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                                         <div className="absolute inset-0 bg-amber-50 rounded-2xl opacity-0 scale-90 group-hover/nav:opacity-100 group-hover/nav:scale-100 transition-all duration-300"></div>
                                     </NavLink>
 
-                                    {item.hasSubmenu && item.submenuItems && (
+                                    {item.hasSubmenu && (
                                         <div className="absolute top-full left-1/2 -translate-x-1/2 pt-4 w-[740px] opacity-0 translate-y-6 pointer-events-none group-hover/nav:opacity-100 group-hover/nav:translate-y-0 group-hover/nav:pointer-events-auto transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) z-50">
                                             <div className="bg-white/95 backdrop-blur-2xl rounded-[32px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-gray-100 p-4 grid grid-cols-2 gap-3">
                                                 <div className="col-span-2 px-4 py-2 border-b border-gray-50 mb-2">
-                                                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Explore Our Programs</p>
+                                                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Danh mục khóa học</p>
                                                 </div>
-                                                {item.submenuItems.map((subItem) => {
-                                                    const iconGradients: Record<string, string> = {
-                                                        red: 'bg-linear-to-br from-red-500 to-rose-600 shadow-red-200',
-                                                        blue: 'bg-linear-to-br from-blue-500 to-indigo-600 shadow-blue-200',
-                                                        amber: 'bg-linear-to-br from-amber-500 to-orange-600 shadow-amber-200',
-                                                        purple: 'bg-linear-to-br from-purple-500 to-fuchsia-600 shadow-purple-200',
-                                                        emerald: 'bg-linear-to-br from-emerald-500 to-teal-600 shadow-emerald-200',
-                                                    };
+                                                {categories.length > 0 ? (
+                                                    categories.map((category, index) => {
+                                                        const colorList = ['red', 'blue', 'amber', 'purple', 'emerald', 'pink', 'cyan', 'indigo'];
+                                                        const color = colorList[index % colorList.length];
+                                                        const iconGradients: Record<string, string> = {
+                                                            red: 'bg-linear-to-br from-red-500 to-rose-600 shadow-red-200',
+                                                            blue: 'bg-linear-to-br from-blue-500 to-indigo-600 shadow-blue-200',
+                                                            amber: 'bg-linear-to-br from-amber-500 to-orange-600 shadow-amber-200',
+                                                            purple: 'bg-linear-to-br from-purple-500 to-fuchsia-600 shadow-purple-200',
+                                                            emerald: 'bg-linear-to-br from-emerald-500 to-teal-600 shadow-emerald-200',
+                                                            pink: 'bg-linear-to-br from-pink-500 to-rose-600 shadow-pink-200',
+                                                            cyan: 'bg-linear-to-br from-cyan-500 to-blue-600 shadow-cyan-200',
+                                                            indigo: 'bg-linear-to-br from-indigo-500 to-purple-600 shadow-indigo-200',
+                                                        };
 
-                                                    const SubIcon = subItem.icon || item.icon;
-
-                                                    return (
-                                                        <NavLink
-                                                            key={subItem.path}
-                                                            to={subItem.path}
-                                                            className="flex items-center gap-5 px-6 py-5 rounded-[24px] hover:bg-gray-50 transition-all duration-300 group/sub border border-transparent hover:border-gray-100 hover:shadow-sm"
-                                                        >
-                                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center group-hover/sub:scale-110 group-hover/sub:-rotate-6 transition-all duration-500 shadow-lg ${iconGradients[subItem.color || 'amber']} text-white shrink-0`}>
-                                                                <SubIcon size={26} strokeWidth={2.5} />
-                                                            </div>
-                                                            <div className="space-y-1">
-                                                                <p className="font-black text-gray-900 text-sm group-hover/sub:text-amber-600 transition-colors uppercase tracking-tight">{subItem.label}</p>
-                                                                <p className="text-[11px] text-gray-400 font-bold leading-relaxed max-w-[200px]">Nâng tầm kỹ năng cùng chuyên gia trong ngành</p>
-                                                            </div>
-                                                        </NavLink>
-                                                    );
-                                                })}
+                                                        return (
+                                                            <NavLink
+                                                                key={category.id}
+                                                                to={`/courses/${encodeURIComponent(category.name)}`}
+                                                                className="flex items-center gap-5 px-6 py-5 rounded-[24px] hover:bg-gray-50 transition-all duration-300 group/sub border border-transparent hover:border-gray-100 hover:shadow-sm"
+                                                            >
+                                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center group-hover/sub:scale-110 group-hover/sub:-rotate-6 transition-all duration-500 shadow-lg ${iconGradients[color]} text-white shrink-0`}>
+                                                                    <Library size={26} strokeWidth={2.5} />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <p className="font-black text-gray-900 text-sm group-hover/sub:text-amber-600 transition-colors uppercase tracking-tight">{category.name}</p>
+                                                                    <p className="text-[11px] text-gray-400 font-bold leading-relaxed max-w-[200px]">Nâng tầm kỹ năng cùng chuyên gia trong ngành</p>
+                                                                </div>
+                                                            </NavLink>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="col-span-2 py-8 text-center">
+                                                        <p className="text-sm text-gray-400">Đang tải danh mục...</p>
+                                                    </div>
+                                                )}
                                                 <div className="col-span-2 mt-2 p-4 bg-amber-50/50 rounded-[20px] flex items-center justify-between">
                                                     <p className="text-xs font-bold text-gray-600 italic">Nhiều sinh viên đã tin tưởng đồng hành</p>
-                                                    <button className="text-[10px] font-black text-amber-600 uppercase tracking-widest hover:underline">Tất cả chương trình →</button>
+                                                    <button 
+                                                        onClick={() => navigate('/courses')}
+                                                        className="text-[10px] font-black text-amber-600 uppercase tracking-widest hover:underline cursor-pointer"
+                                                    >
+                                                        Tất cả chương trình →
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
                                     )}
                                 </div>
                             ))}
+                            
+                            {/* CTA Placement Test - SEO Focus */}
+                            <a
+                                href={placementTestCta.path}
+                                className="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full text-[11px] font-bold shadow-lg shadow-amber-500/20 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap"
+                            >
+                                <Target size={16} />
+                                {placementTestCta.label}
+                            </a>
                         </nav>
 
                         {/* Right Quick Actions */}
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
                             <div className="hidden sm:flex items-center gap-1.5 p-1.5 bg-gray-50 rounded-2xl border border-gray-100">
                                 <button
                                     onClick={() => setIsSearchOpen(true)}
@@ -173,28 +229,38 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                             
                             <NotificationBell />
 
-                            <div
-                                onClick={() => navigate('/registrations')}
-                                className="relative p-3 bg-white text-gray-700 hover:text-amber-600 hover:bg-amber-50 border border-gray-100 rounded-2xl cursor-pointer transition-all duration-300 shadow-sm group active:scale-95"
+                            <button
+                                onClick={() => navigate('/student-dashboard')}
+                                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 hover:text-amber-600 hover:bg-amber-50 border border-gray-100 rounded-2xl cursor-pointer transition-all duration-300 shadow-sm group active:scale-95"
                             >
-                                <GraduationCap size={24} className="group-hover:scale-110 transition-transform" />
-                                {enrolledCourses.length > 0 && (
-                                    <span className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-linear-to-br from-amber-500 to-orange-600 text-white text-[11px] flex items-center justify-center rounded-full border-2 border-white shadow-md font-black">
-                                        {enrolledCourses.length}
-                                    </span>
-                                )}
-                            </div>
+                                <GraduationCap size={20} className="group-hover:scale-110 transition-transform" />
+                                <span className="text-sm font-bold">Dashboard</span>
+                            </button>
 
                             <div className="flex items-center gap-3 pl-2 border-l border-gray-100">
                                 {user ? (
-                                    <div className="relative">
+                                    <div className="relative" ref={userMenuRef}>
                                         <button 
                                             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                                             className={`flex items-center gap-3 p-1 rounded-2xl transition-all duration-300 cursor-pointer border border-transparent px-3 py-1.5 ${isUserMenuOpen ? 'bg-amber-50 border-amber-100' : 'hover:bg-gray-50'}`}
                                         >
                                             <div className="relative">
                                                 <img src={user.avatar} alt={user.fullName} className="w-10 h-10 rounded-full shadow-sm object-cover" />
-                                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+                                                {/* Admin/Teacher Badge */}
+                                                {(user.role === 'TEACHER' || user.role === 'ADMIN') ? (
+                                                    <div
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigate(user.role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard');
+                                                        }}
+                                                        className="absolute -bottom-1 -right-1 px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] font-black uppercase tracking-wider rounded-full border-2 border-white shadow-sm hover:shadow-md hover:scale-105 transition-all cursor-pointer"
+                                                        title={`Vào trang ${user.role === 'ADMIN' ? 'Admin' : 'Giảng viên'}`}
+                                                    >
+                                                        {user.role === 'ADMIN' ? 'AD' : 'GV'}
+                                                    </div>
+                                                ) : (
+                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+                                                )}
                                             </div>
                                             <div className="hidden flex-col items-start xl:flex">
                                                 <p className="text-xs font-black text-gray-900 leading-none">{user.fullName}</p>
@@ -241,7 +307,11 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                                                             )}
                                                             <button
                                                                 onClick={() => {
-                                                                    navigate('/my-learning');
+                                                                    if (enrolledCourses.length === 1) {
+                                                                        navigate(`/course/${enrolledCourses[0].id}/dashboard`);
+                                                                    } else {
+                                                                        navigate('/my-learning');
+                                                                    }
                                                                     setIsUserMenuOpen(false);
                                                                 }}
                                                                 className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all duration-300">
@@ -249,6 +319,17 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                                                                     <BookOpen size={18} />
                                                                 </div>
                                                                 <span className="font-bold">Khóa học của tôi</span>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    navigate('/payment-history');
+                                                                    setIsUserMenuOpen(false);
+                                                                }}
+                                                                className="w-full cursor-pointer group/item flex items-center gap-3 px-4 py-3 text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-all duration-300">
+                                                                <div className="p-2 bg-gray-50 group-hover/item:bg-white rounded-lg transition-colors">
+                                                                    <Receipt size={18} />
+                                                                </div>
+                                                                <span className="font-bold">Lịch sử đơn hàng</span>
                                                             </button>
                                                             <div className="h-px bg-gray-50 my-2 mx-4"></div>
                                                             <button

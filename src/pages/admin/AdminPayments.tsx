@@ -37,7 +37,7 @@ const AdminPayments: React.FC = () => {
     const s = q.trim().toLowerCase();
     if (!s) return payments;
     return payments.filter((p) => {
-      const hay = `${p.user?.email || ''} ${p.user?.name || ''} ${p.course?.title || ''} ${p.status} ${p.provider} ${p.providerTxn}`.toLowerCase();
+      const hay = `${p.user?.email || ''} ${p.user?.name || ''} ${p.course?.title || ''} ${p.status} ${p.provider}`.toLowerCase();
       return hay.includes(s);
     });
   }, [payments, q]);
@@ -59,7 +59,7 @@ const AdminPayments: React.FC = () => {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Tìm theo email, khóa học, txn..."
+                placeholder="Tìm theo email, khóa học..."
                 className="w-full outline-none font-bold text-gray-700 bg-transparent"
               />
             </div>
@@ -111,12 +111,11 @@ const AdminPayments: React.FC = () => {
               <table className="w-full text-left">
                 <thead className="bg-gray-50/50">
                   <tr>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">User</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Khóa học</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Số tiền</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Trạng thái</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Provider</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Txn</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider w-[25%]">User</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider w-[35%]">Khóa học</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider w-[15%]">Số tiền</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider w-[15%]">Trạng thái</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider w-[10%]">Provider</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -126,25 +125,35 @@ const AdminPayments: React.FC = () => {
                         <div className="text-sm font-black text-gray-900">{p.user?.email || String(p.userId)}</div>
                         <div className="text-[11px] font-bold text-gray-400">{p.user?.name || ''}</div>
                       </td>
-                      <td className="px-6 py-5 text-sm font-bold text-gray-700">{p.course?.title || String(p.courseId)}</td>
+                      <td className="px-6 py-5">
+                        <div className="text-sm font-bold text-gray-700 line-clamp-2" title={p.course?.title || String(p.courseId)}>
+                          {p.course?.title || String(p.courseId)}
+                        </div>
+                      </td>
                       <td className="px-6 py-5 text-sm font-black text-amber-600">
                         {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount || 0))}
                       </td>
                       <td className="px-6 py-5">
-                        <span className="text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest bg-gray-50 text-gray-600">
+                        <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${
+                          p.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
+                          p.status === 'pending' ? 'bg-amber-50 text-amber-600' :
+                          p.status === 'failed' ? 'bg-red-50 text-red-600' :
+                          'bg-gray-50 text-gray-600'
+                        }`}>
                           {p.status}
                         </span>
                       </td>
-                      <td className="px-6 py-5 text-xs font-black uppercase tracking-widest text-gray-500 flex items-center gap-2">
-                        <CreditCard size={14} className="text-gray-300" />
-                        {p.provider}
+                      <td className="px-6 py-5 text-xs font-black uppercase tracking-widest text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <CreditCard size={14} className="text-gray-300" />
+                          {p.provider}
+                        </div>
                       </td>
-                      <td className="px-6 py-5 text-xs font-bold text-gray-400">{p.providerTxn}</td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-20 text-center">
+                      <td colSpan={5} className="py-20 text-center">
                         <AlertCircle className="mx-auto text-gray-200 mb-4" size={48} />
                         <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Không tìm thấy thanh toán nào</p>
                       </td>

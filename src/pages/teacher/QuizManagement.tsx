@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { HelpCircle, Clock, Plus, MoreVertical, Edit3, AlertCircle, FileText, ChevronRight, X, BarChart3, Calendar, Search, ChevronLeft } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { HelpCircle, Clock, Plus, MoreVertical, Edit3, AlertCircle, FileText, ChevronRight, X, BarChart3, Calendar, Search, ChevronLeft, Sparkles, LoaderCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
     teacherService,
     type BackendTeacherCourse,
     type BackendTeacherQuiz,
+    type TeacherCourseContentResponse,
 } from '../../services/teacher.service';
 
 interface QuizTemplate {
@@ -24,7 +25,10 @@ interface QuizTemplate {
 const QuizManagement: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
+    const [searchParams] = useSearchParams();
+    const courseIdFromUrl = searchParams.get('courseId');
+    const chapterIdFromUrl = searchParams.get('chapterId');
+    const [selectedCourseId, setSelectedCourseId] = useState<string>(courseIdFromUrl || 'all');
 
     const [loading, setLoading] = useState(false);
     const [quizzes, setQuizzes] = useState<QuizTemplate[]>([]);
@@ -48,6 +52,8 @@ const QuizManagement: React.FC = () => {
     const [createShowResults, setCreateShowResults] = useState<boolean>(true);
     const [createAntiCheat, setCreateAntiCheat] = useState<boolean>(false);
     const [creating, setCreating] = useState(false);
+    const [createChapterId, setCreateChapterId] = useState<string>(chapterIdFromUrl || '');
+    const [createChapters, setCreateChapters] = useState<any[]>([]);
 
     // Auto-suggest end time based on start time and duration
     useEffect(() => {
@@ -73,6 +79,25 @@ const QuizManagement: React.FC = () => {
     // Delete Modal State
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [quizToDeleteId, setQuizToDeleteId] = useState<string | null>(null);
+
+    // AI Quiz Generation State
+    const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
+    const [aiCourseId, setAiCourseId] = useState<string>('');
+    const [aiLectureId, setAiLectureId] = useState<string>('');
+    const [aiQuizTitle, setAiQuizTitle] = useState('');
+    const [aiQuestionCount, setAiQuestionCount] = useState<number>(10);
+    const [aiDifficulty, setAiDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
+    const [aiQuestionTypes, setAiQuestionTypes] = useState<string[]>(['multiple_choice']);
+    const [aiTimeLimit, setAiTimeLimit] = useState<number>(30);
+    const [aiMaxScore, setAiMaxScore] = useState<number>(100);
+    const [aiPassingScore, setAiPassingScore] = useState<number>(60);
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [courseContent, setCourseContent] = useState<TeacherCourseContentResponse>({ chapters: [], course: {} as BackendTeacherCourse });
+    const [_aiGeneratedQuestions, setAiGeneratedQuestions] = useState<any[] | null>(null);
+    // RAG Quiz Generation State
+    const [aiScope, setAiScope] = useState<'course' | 'chapter' | 'lecture' | 'multi'>('lecture');
+    const [aiSelectedLectures, setAiSelectedLectures] = useState<string[]>([]);
+    const [aiChapterId, setAiChapterId] = useState<string>('');
 
     // Edit State
     const [editingQuiz, setEditingQuiz] = useState<BackendTeacherQuiz | null>(null);
@@ -127,6 +152,19 @@ const QuizManagement: React.FC = () => {
         setCurrentPage(1);
     }, [selectedCourseId, searchTerm, statusFilter, sortBy]);
 
+    // Update selectedCourseId when URL param changes
+    useEffect(() => {
+        if (courseIdFromUrl) {
+            setSelectedCourseId(courseIdFromUrl);
+        }
+    }, [courseIdFromUrl]);
+
+    useEffect(() => {
+        if (chapterIdFromUrl) {
+            setCreateChapterId(chapterIdFromUrl);
+        }
+    }, [chapterIdFromUrl]);
+
     const openQuestionManager = (quizId: string) => {
         navigate(`/teacher/quiz-editor/${quizId}`);
     };
@@ -158,7 +196,7 @@ const QuizManagement: React.FC = () => {
                             questionsCount: Array.isArray(q.questions) ? q.questions.length : 0,
                             duration: Number(q.timeLimit ?? 0),
                             assignedStudents: 0,
-                            status: q.startTime ? 'published' : 'draft', // Using startTime as a proxy for published if no field exists
+                            status: q.status || 'draft', // Use actual status field from backend
                             createdAt: created ? created.toLocaleDateString('vi-VN') : '',
                             originalCreatedAt: created ? created.getTime() : 0,
                         } as QuizTemplate;
@@ -185,11 +223,14 @@ const QuizManagement: React.FC = () => {
         return () => window.removeEventListener('click', handleClickOutside);
     }, []);
 
-    const openCreate = () => {
+    const openCreate = async () => {
         if (teacherCourses.length === 0) {
             toast.error('Bạn chưa có khóa học nào để tạo quiz');
             return;
         }
+        // Default course from URL param, fallback to first course
+        const defaultCourseId = courseIdFromUrl || String(teacherCourses[0].id);
+        setCreateCourseId(defaultCourseId);
         setCreateTitle('');
         setCreateDescription('');
         setCreateTimeLimit(30);
@@ -199,7 +240,110 @@ const QuizManagement: React.FC = () => {
         setCreateEndTime('');
         setCreateShowResults(true);
         setCreateAntiCheat(false);
+        // Load chapters for the selected course
+        if (defaultCourseId) {
+            try {
+                const content = await teacherService.getCourseContent(defaultCourseId);
+                setCreateChapters(content.chapters || []);
+            } catch {
+                setCreateChapters([]);
+            }
+        }
         setCreateOpen(true);
+    };
+
+    const openAIGenerate = async () => {
+        if (teacherCourses.length === 0) {
+            toast.error('Bạn chưa có khóa học nào để tạo quiz');
+            return;
+        }
+        const firstCourseId = String(teacherCourses[0].id);
+        setAiCourseId(firstCourseId);
+        setAiLectureId('');
+        setAiQuizTitle('');
+        setAiQuestionCount(10);
+        setAiDifficulty('mixed');
+        setAiQuestionTypes(['multiple_choice']);
+        setAiTimeLimit(30);
+        setAiMaxScore(100);
+        setAiPassingScore(60);
+        setAiGeneratedQuestions(null);
+        // Reset RAG state
+        setAiScope('lecture');
+        setAiSelectedLectures([]);
+        setAiChapterId('');
+        setAiGenerateOpen(true);
+        // Load course content for lecture selection
+        await loadCourseContent(firstCourseId);
+    };
+
+    const loadCourseContent = async (courseId: string) => {
+        try {
+            const content = await teacherService.getCourseContent(courseId);
+            setCourseContent(content);
+        } catch (err: any) {
+            toast.error('Không thể tải nội dung khóa học');
+        }
+    };
+
+    const handleAICourseChange = async (courseId: string) => {
+        setAiCourseId(courseId);
+        setAiLectureId('');
+        await loadCourseContent(courseId);
+    };
+
+    const submitAIGenerate = async () => {
+        if (!aiQuizTitle.trim()) {
+            toast.error('Vui lòng nhập tiêu đề quiz');
+            return;
+        }
+        if (aiScope === 'lecture' && !aiLectureId) {
+            toast.error('Vui lòng chọn bài học để tạo quiz');
+            return;
+        }
+        if (aiScope === 'multi' && aiSelectedLectures.length === 0) {
+            toast.error('Vui lòng chọn ít nhất một bài học');
+            return;
+        }
+        try {
+            setAiGenerating(true);
+            
+            // Determine lecture IDs based on scope
+            let lectureIds: string[] = [];
+            if (aiScope === 'lecture') {
+                lectureIds = [aiLectureId];
+            } else if (aiScope === 'multi') {
+                lectureIds = aiSelectedLectures;
+            }
+            
+            const result = await teacherService.generateAndSaveRAGQuiz(
+                aiCourseId,
+                {
+                    title: aiQuizTitle,
+                    timeLimit: aiTimeLimit,
+                    maxScore: aiMaxScore,
+                    passingScore: aiPassingScore,
+                },
+                {
+                    scope: aiScope,
+                    lectureIds,
+                    chapterId: aiChapterId,
+                    count: aiQuestionCount,
+                    difficulty: aiDifficulty,
+                    questionTypes: aiQuestionTypes,
+                }
+            );
+            console.log('DEBUG result:', result);
+            console.log('DEBUG result keys:', Object.keys(result || {}));
+            toast.success(`Đã tạo quiz "${result.quiz.title}" với ${result.questions.length} câu hỏi bằng AI (RAG)`);
+            setAiGenerateOpen(false);
+            await loadQuizzes();
+            navigate(`/teacher/quiz-editor/${result.quiz.id}`);
+        } catch (err: any) {
+            toast.error(err?.message || 'Không thể tạo quiz bằng AI');
+        } finally {
+            setAiGenerating(false);
+        }
     };
 
     const openEdit = (quiz: QuizTemplate) => {
@@ -256,6 +400,7 @@ const QuizManagement: React.FC = () => {
                 endTime: createEndTime || null,
                 showResults: createShowResults,
                 antiCheat: createAntiCheat,
+                chapterId: createChapterId || undefined,
             });
             toast.success('Tạo đề thi thành công');
             setCreateOpen(false);
@@ -333,6 +478,17 @@ const QuizManagement: React.FC = () => {
                 {/* Header */}
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-12 mb-16 px-4">
                     <div className="max-w-3xl">
+                        {courseIdFromUrl && (
+                            <button
+                                onClick={() => navigate(`/teacher/content-editor/${courseIdFromUrl}`)}
+                                className="group flex items-center gap-3 text-gray-400 hover:text-amber-600 font-black uppercase tracking-widest text-[10px] transition-all cursor-pointer mb-4"
+                            >
+                                <div className="p-2 bg-white rounded-xl shadow-sm group-hover:bg-amber-50 transition-all">
+                                    <ChevronLeft size={14} />
+                                </div>
+                                Quay lại Content Editor
+                            </button>
+                        )}
 
                         <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                             Kiến tạo đề thi.
@@ -343,6 +499,13 @@ const QuizManagement: React.FC = () => {
                     </div>
 
                     <div className="flex gap-4">
+                        <button
+                            onClick={openAIGenerate}
+                            className="flex items-center gap-3 bg-purple-600 text-white px-8 py-5 rounded-[28px] font-bold text-sm hover:bg-purple-700 transition-all shadow-2xl shadow-purple-200 active:scale-95 cursor-pointer"
+                        >
+                            <Sparkles size={20} />
+                            Tạo bằng AI
+                        </button>
                         <button
                             onClick={openCreate}
                             className="flex items-center gap-3 bg-gray-900 text-white px-8 py-5 rounded-[28px] font-bold text-sm hover:bg-amber-600 transition-all shadow-2xl shadow-gray-200 active:scale-95 cursor-pointer"
@@ -373,15 +536,19 @@ const QuizManagement: React.FC = () => {
                             <div className="flex flex-col gap-2">
                                 <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Khóa học</div>
                                 <select
-                                    className="w-full bg-gray-50 border border-transparent rounded-xl md:rounded-2xl px-5 py-3 text-xs font-bold focus:outline-none focus:border-amber-500 focus:bg-white transition-all cursor-pointer shadow-xs"
+                                    className={`w-full bg-gray-50 border border-transparent rounded-xl md:rounded-2xl px-5 py-3 text-xs font-bold focus:outline-none focus:border-amber-500 focus:bg-white transition-all cursor-pointer shadow-xs ${courseIdFromUrl ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     value={selectedCourseId}
                                     onChange={(e) => setSelectedCourseId(e.target.value)}
+                                    disabled={!!courseIdFromUrl}
                                 >
                                     <option value="all">Tất cả khóa học</option>
                                     {teacherCourses.map(course => (
                                         <option key={course.id} value={course.id}>{course.title}</option>
                                     ))}
                                 </select>
+                                {courseIdFromUrl && (
+                                    <p className="text-[10px] text-amber-600 font-medium">Đang lọc theo khóa học từ Content Editor</p>
+                                )}
                             </div>
 
                             {/* Status Filter */}
@@ -589,11 +756,39 @@ const QuizManagement: React.FC = () => {
                                     <div className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Khóa học</div>
                                     <select
                                         value={createCourseId}
-                                        onChange={(e) => setCreateCourseId(e.target.value)}
+                                        onChange={async (e) => {
+                                            const courseId = e.target.value;
+                                            setCreateCourseId(courseId);
+                                            if (courseId) {
+                                                try {
+                                                    const content = await teacherService.getCourseContent(courseId);
+                                                    setCreateChapters(content.chapters || []);
+                                                } catch {
+                                                    setCreateChapters([]);
+                                                }
+                                            } else {
+                                                setCreateChapters([]);
+                                            }
+                                        }}
                                         className="w-full bg-gray-50 rounded-xl md:rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800"
                                     >
+                                        <option value="">-- Chọn khóa học --</option>
                                         {teacherCourses.map((c) => (
                                             <option key={String(c.id)} value={String(c.id)}>{c.title}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <div className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Chương</div>
+                                    <select
+                                        value={createChapterId}
+                                        onChange={(e) => setCreateChapterId(e.target.value)}
+                                        className="w-full bg-gray-50 rounded-xl md:rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:bg-white focus:border-amber-300 transition-all"
+                                    >
+                                        <option value="">-- Không gắn chương --</option>
+                                        {createChapters.map((ch: any) => (
+                                            <option key={String(ch.id)} value={String(ch.id)}>{ch.title}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -869,6 +1064,288 @@ const QuizManagement: React.FC = () => {
                     </div>
                 )}
 
+
+                {/* AI Quiz Generation Modal */}
+                {aiGenerateOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="w-full max-w-2xl bg-white rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden max-h-[95vh] flex flex-col">
+                            <div className="p-6 border-b border-gray-50 bg-gradient-to-r from-purple-50 to-white shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center">
+                                        <Sparkles size={20} />
+                                    </div>
+                                    <div>
+                                        <div className="text-lg font-bold text-gray-900">Tạo Quiz bằng AI</div>
+                                        <div className="text-sm text-gray-500">AI sẽ tự động tạo câu hỏi dựa trên nội dung bài học</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                                {/* Course Selection */}
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider block">Khóa học</label>
+                                    <select
+                                        value={aiCourseId}
+                                        onChange={(e) => handleAICourseChange(e.target.value)}
+                                        className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:border-purple-300 transition-all"
+                                    >
+                                        {teacherCourses.map((c) => (
+                                            <option key={String(c.id)} value={String(c.id)}>{c.title}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Scope Selection */}
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider block">Phạm vi tạo quiz</label>
+                                    <select
+                                        value={aiScope}
+                                        onChange={(e) => setAiScope(e.target.value as any)}
+                                        className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:border-purple-300 transition-all"
+                                    >
+                                        <option value="lecture">Một bài học cụ thể</option>
+                                        <option value="chapter">Toàn bộ chương</option>
+                                        <option value="course">Toàn bộ khóa học</option>
+                                        <option value="multi">Nhiều bài học</option>
+                                    </select>
+                                </div>
+
+                                {/* Dynamic Selection based on Scope */}
+                                {aiScope === 'lecture' && (
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider block">Bài học <span className="text-red-500">*</span></label>
+                                        <select
+                                            value={aiLectureId}
+                                            onChange={(e) => setAiLectureId(e.target.value)}
+                                            className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:border-purple-300 transition-all cursor-pointer"
+                                        >
+                                            <option value="">-- Chọn bài học --</option>
+                                            {courseContent.chapters?.map((chapter) => (
+                                                <optgroup key={chapter.id} label={chapter.title}>
+                                                    {(chapter.Lectures || (chapter as any).lectures || [])?.map((lecture: any) => (
+                                                        <option key={lecture.id} value={String(lecture.id)}>
+                                                            {lecture.title}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
+                                        </select>
+                                        {(!courseContent.chapters || courseContent.chapters.length === 0) && (
+                                            <p className="text-xs text-red-500 mt-2">Không có bài học nào trong khóa học này</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {aiScope === 'chapter' && (
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider block">Chương <span className="text-red-500">*</span></label>
+                                        <select
+                                            value={aiChapterId}
+                                            onChange={(e) => setAiChapterId(e.target.value)}
+                                            className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:border-purple-300 transition-all cursor-pointer"
+                                        >
+                                            <option value="">-- Chọn chương --</option>
+                                            {courseContent.chapters?.map((chapter: any) => (
+                                                <option key={chapter.id} value={String(chapter.id)}>
+                                                    {chapter.title} ({(chapter.Lectures || (chapter as any).lectures || []).length} bài học)
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {(!courseContent.chapters || courseContent.chapters.length === 0) && (
+                                            <p className="text-xs text-red-500 mt-2">Không có chương nào trong khóa học này</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {aiScope === 'course' && (
+                                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                        <p className="text-sm font-bold text-blue-700">Quiz sẽ được tạo từ toàn bộ nội dung khóa học</p>
+                                        <p className="text-xs text-blue-600 mt-1">AI sẽ lấy thông tin từ tất cả các bài học trong khóa học này.</p>
+                                    </div>
+                                )}
+
+                                {aiScope === 'multi' && (
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider block">Chọn nhiều bài học <span className="text-red-500">*</span></label>
+                                        <div className="max-h-48 overflow-y-auto bg-gray-50 rounded-2xl border border-gray-100 p-3 space-y-2">
+                                            {courseContent.chapters?.map((chapter) => (
+                                                <div key={chapter.id}>
+                                                    <p className="text-xs font-bold text-gray-500 px-2 py-1">{chapter.title}</p>
+                                                    {(chapter.Lectures || (chapter as any).lectures || [])?.map((lecture: any) => (
+                                                        <label key={lecture.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded-lg cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={aiSelectedLectures.includes(String(lecture.id))}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setAiSelectedLectures([...aiSelectedLectures, String(lecture.id)]);
+                                                                    } else {
+                                                                        setAiSelectedLectures(aiSelectedLectures.filter(id => id !== String(lecture.id)));
+                                                                    }
+                                                                }}
+                                                                className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                                                            />
+                                                            <span className="text-sm font-medium text-gray-700">{lecture.title}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">Đã chọn {aiSelectedLectures.length} bài học</p>
+                                        {(!courseContent.chapters || courseContent.chapters.length === 0) && (
+                                            <p className="text-xs text-red-500 mt-2">Không có bài học nào trong khóa học này</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Quiz Title */}
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider block">Tiêu đề Quiz <span className="text-red-500">*</span></label>
+                                    <input
+                                        value={aiQuizTitle}
+                                        onChange={(e) => setAiQuizTitle(e.target.value)}
+                                        className="w-full bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none focus:border-purple-300 transition-all"
+                                        placeholder="VD: Kiểm tra chương 1 - Ngữ pháp cơ bản..."
+                                    />
+                                </div>
+
+                                {/* Settings Grid */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider block px-1">Số câu hỏi</label>
+                                        <select
+                                            value={aiQuestionCount}
+                                            onChange={(e) => setAiQuestionCount(Number(e.target.value))}
+                                            className="w-full bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none text-xs"
+                                        >
+                                            {[5, 10, 15, 20, 25, 30].map(n => (
+                                                <option key={n} value={n}>{n} câu</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider block px-1">Độ khó</label>
+                                        <select
+                                            value={aiDifficulty}
+                                            onChange={(e) => setAiDifficulty(e.target.value as any)}
+                                            className="w-full bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none text-xs"
+                                        >
+                                            <option value="easy">Dễ</option>
+                                            <option value="medium">Trung bình</option>
+                                            <option value="hard">Khó</option>
+                                            <option value="mixed">Hỗn hợp</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Question Types */}
+                                <div>
+                                    <label className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-wider block px-1">Loại câu hỏi</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[
+                                            { id: 'multiple_choice', label: 'Trắc nghiệm' },
+                                            { id: 'true_false', label: 'Đúng/Sai' },
+                                            { id: 'short_answer', label: 'Trả lời ngắn' },
+                                        ].map((type) => (
+                                            <button
+                                                key={type.id}
+                                                onClick={() => {
+                                                    if (aiQuestionTypes.includes(type.id)) {
+                                                        setAiQuestionTypes(aiQuestionTypes.filter(t => t !== type.id));
+                                                    } else {
+                                                        setAiQuestionTypes([...aiQuestionTypes, type.id]);
+                                                    }
+                                                }}
+                                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                    aiQuestionTypes.includes(type.id)
+                                                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                                        : 'bg-gray-50 text-gray-500 border border-gray-100'
+                                                }`}
+                                            >
+                                                {type.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Quiz Settings */}
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider block px-1">Thời gian (phút)</label>
+                                        <input
+                                            type="number"
+                                            value={aiTimeLimit}
+                                            onChange={(e) => setAiTimeLimit(Number(e.target.value))}
+                                            className="w-full bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none text-xs"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider block px-1">Điểm tối đa</label>
+                                        <input
+                                            type="number"
+                                            value={aiMaxScore}
+                                            onChange={(e) => setAiMaxScore(Number(e.target.value))}
+                                            className="w-full bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none text-xs"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider block px-1">Điểm đạt (%)</label>
+                                        <input
+                                            type="number"
+                                            value={aiPassingScore}
+                                            onChange={(e) => setAiPassingScore(Number(e.target.value))}
+                                            className="w-full bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 font-bold text-gray-800 outline-none text-xs"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Info Box */}
+                                <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                                    <div className="flex items-start gap-3">
+                                        <Sparkles size={18} className="text-purple-500 mt-0.5" />
+                                        <div>
+                                            <p className="text-sm font-bold text-purple-700">AI sẽ phân tích nội dung bài học</p>
+                                            <p className="text-xs text-purple-600 mt-1">Hệ thống AI sẽ đọc nội dung bài học và tạo các câu hỏi phù hợp với độ khó và loại câu hỏi bạn đã chọn.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6 border-t border-gray-50 flex items-center justify-end gap-3 shrink-0">
+                                <button
+                                    disabled={aiGenerating}
+                                    onClick={() => setAiGenerateOpen(false)}
+                                    className="px-5 py-3 rounded-xl font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 transition-all disabled:opacity-50"
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    disabled={aiGenerating || 
+                                        (aiScope === 'lecture' && !aiLectureId) ||
+                                        (aiScope === 'chapter' && !aiChapterId) ||
+                                        (aiScope === 'multi' && aiSelectedLectures.length === 0) ||
+                                        !aiQuizTitle.trim()
+                                    }
+                                    onClick={submitAIGenerate}
+                                    className="px-5 py-3 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {aiGenerating ? (
+                                        <>
+                                            <LoaderCircle size={18} className="animate-spin" />
+                                            Đang tạo...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles size={18} />
+                                            Tạo Quiz bằng AI
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Delete Confirmation Modal */}
                 {showDeleteModal && (

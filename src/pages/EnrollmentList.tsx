@@ -72,7 +72,7 @@ const EnrollmentList: React.FC = () => {
                                     <div className="flex-1 flex flex-col justify-between py-1">
                                         <div>
                                             <div className="flex justify-between items-start gap-4">
-                                                <h3 className="text-lg font-bold text-gray-900 line-clamp-2 hover:text-amber-600 cursor-pointer transition-colors leading-snug" onClick={() => navigate(`/course/${item.id}`)}>
+                                                <h3 className="text-lg font-bold text-gray-900 line-clamp-2 hover:text-amber-600 cursor-pointer transition-colors leading-snug" onClick={() => navigate(`/course/${item.id}/dashboard`)}>
                                                     {item.title}
                                                 </h3>
                                                 <button

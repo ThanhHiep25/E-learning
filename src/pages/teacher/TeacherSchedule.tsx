@@ -384,37 +384,69 @@ const TeacherSchedule: React.FC = () => {
                                         <p className="text-slate-300 font-bold mt-2">Hãy bắt đầu bằng việc tạo một kế hoạch mới</p>
                                     </div>
                                 ) : (
-                                    scheduleItems
-                                        .filter(item => (filterType === 'all' || item.type === filterType))
-                                        .map(item => (
-                                            <div key={item.id} className="bg-white rounded-[32px] p-6 md:p-8 shadow-sm border border-gray-100 flex flex-col md:flex-row gap-8 relative overflow-hidden group hover:shadow-2xl transition-all duration-500">
-                                                <div className="flex md:flex-col items-center justify-center gap-2 w-24 shrink-0 p-4 bg-slate-50 rounded-[24px] group-hover:bg-slate-900 group-hover:text-white transition-all duration-500">
+                                    (() => {
+                                        const now = new Date();
+                                        const filtered = scheduleItems.filter(item => (filterType === 'all' || item.type === filterType));
+                                        
+                                        // Sort: upcoming first, then past events
+                                        const sorted = filtered.sort((a, b) => {
+                                            const dateA = new Date(a.startAt).getTime();
+                                            const dateB = new Date(b.startAt).getTime();
+                                            // If both are upcoming or both are past, sort by date
+                                            const isUpcomingA = dateA >= now.getTime();
+                                            const isUpcomingB = dateB >= now.getTime();
+                                            
+                                            if (isUpcomingA && !isUpcomingB) return -1;
+                                            if (!isUpcomingA && isUpcomingB) return 1;
+                                            // Both same status, sort by date (upcoming: earliest first, past: latest first)
+                                            return isUpcomingA ? dateA - dateB : dateB - dateA;
+                                        });
+                                        
+                                        return sorted.map(item => {
+                                            const isPast = new Date(item.endAt || item.startAt) < now;
+                                            return (
+                                            <div key={item.id} className={`rounded-[32px] p-6 md:p-8 shadow-sm border flex flex-col md:flex-row gap-8 relative overflow-hidden group hover:shadow-2xl transition-all duration-500 ${
+                                                isPast 
+                                                    ? 'bg-gray-50 border-gray-200 opacity-70 grayscale-[30%]' 
+                                                    : 'bg-white border-gray-100'
+                                            }`}>
+                                                <div className={`flex md:flex-col items-center justify-center gap-2 w-24 shrink-0 p-4 rounded-[24px] transition-all duration-500 ${
+                                                    isPast 
+                                                        ? 'bg-gray-200 text-gray-500' 
+                                                        : 'bg-slate-50 group-hover:bg-slate-900 group-hover:text-white'
+                                                }`}>
                                                     <span className="text-xl font-bold">{item.startAt ? format(parseISO(item.startAt), 'dd') : '--'}</span>
                                                     <span className="text-sm font-bold opacity-60">TH.{item.startAt ? format(parseISO(item.startAt), 'MM') : '--'}</span>
+                                                    {isPast && <span className="text-[8px] font-bold text-gray-400">ĐÃ QUA</span>}
                                                 </div>
 
                                                 <div className="flex-1 min-w-0 py-2">
                                                     <div className="flex flex-wrap items-center gap-3 mb-4">
-                                                        <span className={`px-4 py-1.5 rounded-full text-sm font-bold border shadow-sm ${getTypeColor(item.type)}`}>
+                                                        <span className={`px-4 py-1.5 rounded-full text-sm font-bold border shadow-sm ${getTypeColor(item.type)} ${isPast ? 'opacity-60' : ''}`}>
                                                             {item.type}
                                                         </span>
-                                                        {item.isPersonal && (
+                                                        {isPast && (
+                                                            <span className="px-4 py-1.5 bg-gray-500 text-white rounded-full text-[10px] font-bold flex items-center gap-1.5">
+                                                                <AlertCircle size={10} /> Đã qua
+                                                            </span>
+                                                        )}
+                                                        {item.isPersonal && !isPast && (
                                                             <span className="px-4 py-1.5 bg-slate-900 text-white rounded-full text-[10px] font-bold flex items-center gap-1.5">
                                                                 <Bookmark size={10} /> Cá nhân
                                                             </span>
                                                         )}
-                                                        {item.type === 'live' && (
+                                                        {item.type === 'live' && !isPast && (
                                                             <span className="px-4 py-1.5 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center gap-1.5">
                                                                 <Video size={10} /> Live Session
                                                             </span>
                                                         )}
                                                     </div>
 
-                                                    <h3 className="text-lg md:text-xl font-bold text-slate-900 mb-2 leading-tight group-hover:text-amber-600 transition-colors">{item.title}</h3>
-                                                    {item.courseTitle && <p className="text-sm font-bold text-amber-600 mb-3 flex items-center gap-2"><BookOpen size={16} /> {item.courseTitle}</p>}
-                                                    <p className="text-sm text-slate-500 font-bold leading-relaxed line-clamp-2 italic opacity-80">{item.description}</p>
+                                                    <h3 className={`text-lg md:text-xl font-bold mb-2 leading-tight transition-colors ${isPast ? 'text-gray-500 line-through' : 'text-slate-900 group-hover:text-amber-600'}`}>{item.title}</h3>
+                                                    {item.courseTitle && <p className={`text-sm font-bold mb-3 flex items-center gap-2 ${isPast ? 'text-gray-400' : 'text-amber-600'}`}><BookOpen size={16} /> {item.courseTitle}</p>}
+                                                    <p className={`text-sm font-bold leading-relaxed line-clamp-2 italic ${isPast ? 'text-gray-400' : 'text-slate-500 opacity-80'}`}>{item.description}</p>
 
-                                                    {item.type === 'live' && (item.meetingId || item.zoomLink) && (
+                                                    {item.type === 'live' && (item.meetingId || item.zoomLink) && !isPast && (
                                                         <div className="mt-4 flex flex-wrap gap-4">
                                                             {item.platform && (
                                                                 <div className="bg-slate-900 px-4 py-2 rounded-xl text-white flex items-center gap-2">
@@ -438,40 +470,54 @@ const TeacherSchedule: React.FC = () => {
                                                     )}
                                                 </div>
 
-                                                <div className="flex items-center justify-between md:justify-end gap-6 shrink-0 md:border-l border-gray-100 pt-6 md:pt-0 md:pl-8">
+                                                <div className={`flex items-center justify-between md:justify-end gap-6 shrink-0 md:border-l pt-6 md:pt-0 md:pl-8 ${isPast ? 'border-gray-200' : 'border-gray-100'}`}>
                                                     <div className="text-left md:text-right">
-                                                        <div className="flex items-center gap-2 md:justify-end text-slate-900 mb-1">
-                                                            <Clock size={20} className="text-amber-500" />
+                                                        <div className={`flex items-center gap-2 md:justify-end mb-1 ${isPast ? 'text-gray-500' : 'text-slate-900'}`}>
+                                                            <Clock size={20} className={isPast ? 'text-gray-400' : 'text-amber-500'} />
                                                             <p className="text-xl font-bold tabular-nums tracking-tighter">
                                                                 {item.startAt ? format(parseISO(item.startAt), 'HH:mm') : '--:--'}
                                                             </p>
                                                         </div>
-                                                        <p className="text-sm font-bold text-slate-400">Thời gian bắt đầu</p>
+                                                        <p className={`text-sm font-bold ${isPast ? 'text-gray-400' : 'text-slate-400'}`}>Thời gian bắt đầu</p>
                                                     </div>
 
                                                     <div className="flex gap-2">
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleEditClick(item); }}
-                                                            className="w-14 h-14 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center hover:bg-amber-500 hover:text-white transition-all shadow-sm active:scale-90 cursor-pointer"
+                                                            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm active:scale-90 cursor-pointer ${
+                                                                isPast 
+                                                                    ? 'bg-gray-100 text-gray-400 hover:bg-gray-200' 
+                                                                    : 'bg-amber-50 text-amber-500 hover:bg-amber-500 hover:text-white'
+                                                            }`}
                                                         >
                                                             <Save size={20} />
                                                         </button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleDeleteClick(item); }}
-                                                            className="w-14 h-14 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all shadow-sm active:scale-90 cursor-pointer"
+                                                            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm active:scale-90 cursor-pointer ${
+                                                                isPast 
+                                                                    ? 'bg-gray-100 text-gray-400 hover:bg-rose-100 hover:text-rose-500' 
+                                                                    : 'bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white'
+                                                            }`}
                                                         >
                                                             <Trash2 size={24} />
                                                         </button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); setSelectedItem(item); }}
-                                                            className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center group-hover:bg-amber-500 transition-all shadow-xl shadow-slate-900/10 active:scale-90 cursor-pointer"
+                                                            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl active:scale-90 cursor-pointer ${
+                                                                isPast 
+                                                                    ? 'bg-gray-400 text-white shadow-gray-200' 
+                                                                    : 'bg-slate-900 text-white group-hover:bg-amber-500 shadow-slate-900/10'
+                                                            }`}
                                                         >
                                                             <ChevronRight size={20} />
                                                         </button>
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))
+                                        );
+                                        })
+                                    })()
                                 )}
                             </div>
                         ) : renderCalendar()}

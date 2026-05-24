@@ -26,9 +26,12 @@ export interface StudentQuiz {
   timeLimit: number;
   maxScore: number;
   passingScore: number;
+  maxAttempts?: number | null;
   questions?: QuizQuestion[];
   courseTitle?: string;
   type?: "course" | "placement";
+  isLevelFinal?: boolean;
+  level?: string;
   categoryId?: number | string | null;
   startTime?: string | null;
   endTime?: string | null;
@@ -56,6 +59,8 @@ export interface QuizAttempt {
   completedAt?: string;
   submittedAt?: string;
   timeLimit?: number;
+  remainingSeconds?: number | null;
+  timedOut?: boolean;
   answers?: Record<string, any>;
   quiz?: StudentQuiz;
   questions?: QuizQuestion[];
@@ -81,12 +86,15 @@ export interface QuizResults {
 export interface QuizStartResponse {
   attempt: QuizAttempt;
   quiz: StudentQuiz;
+  resumed?: boolean;
 }
 
 export interface QuizSubmitResponse {
   attempt: QuizAttempt;
   results: QuizResults[];
   quiz?: StudentQuiz;
+  certificate?: { certificateId: string; issuedAt: string; isNew: boolean };
+  levelUp?: { leveledUp: boolean; newLevel?: string; message?: string };
 }
 
 export const quizService = {

@@ -269,8 +269,8 @@ const LearningSchedule: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex flex-col xl:flex-row gap-8 md:gap-12 px-4 md:px-10 max-w-[1440px] mx-auto mt-8 md:mt-20 mb-20">
-                <div className="flex-1 min-w-0">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-12 px-4 md:px-10 max-w-[1440px] mx-auto mt-8 md:mt-20 mb-20 items-start">
+                <div className="lg:col-span-8 xl:col-span-9 min-w-0 w-full">
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8 md:mb-10 px-2 sm:px-4">
                         <div className="flex flex-col gap-1">
                             <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tighter uppercase whitespace-nowrap">
@@ -375,30 +375,30 @@ const LearningSchedule: React.FC = () => {
                         </div>
                     ) : renderCalendar()}
                 </div>
-                <aside className="w-full xl:w-96 space-y-8">
+                <aside className="lg:col-span-4 xl:col-span-3 space-y-8 sticky top-24">
                     {/* Notes/Tips Box */}
-                    <div className="bg-slate-900 rounded-[40px] p-8 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20">
+                    <div className="bg-slate-900 rounded-[32px] p-6 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                        <h3 className="text-md font-bold text-amber-500 mb-6">Mẹo học tập</h3>
-                        <div className="space-y-6">
-                            <div className="flex gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-                                    <BookOpen size={18} className="text-amber-500" />
+                        <h3 className="text-sm font-black text-amber-500 mb-5 uppercase tracking-widest">Mẹo học tập</h3>
+                        <div className="space-y-5">
+                            <div className="flex gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/10">
+                                    <BookOpen size={14} className="text-amber-500" />
                                 </div>
-                                <p className="text-xs font-bold leading-relaxed opacity-80">Ghi chú lại những kiến thức quan trọng ngay sau bài giảng.</p>
+                                <p className="text-[11px] font-bold leading-relaxed text-slate-300">Ghi chú lại những kiến thức quan trọng ngay sau bài giảng.</p>
                             </div>
-                            <div className="flex gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-                                    <Clock size={18} className="text-amber-500" />
+                            <div className="flex gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/10">
+                                    <Clock size={14} className="text-amber-500" />
                                 </div>
-                                <p className="text-xs font-bold leading-relaxed opacity-80">Phân bổ ít nhất 30 phút mỗi ngày để ôn tập lại từ vựng.</p>
+                                <p className="text-[11px] font-bold leading-relaxed text-slate-300">Phân bổ ít nhất 30 phút mỗi ngày để ôn tập lại từ vựng.</p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-[40px] p-8 shadow-sm border border-gray-100">
-                        <h3 className="text-md font-bold text-slate-900 mb-8">Hiệu suất tuần này</h3>
-                        <div className="flex items-end justify-between gap-2 h-32">
+                    <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100">
+                        <h3 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Hiệu suất</h3>
+                        <div className="flex items-end justify-between gap-1.5 h-24">
                             {[60, 45, 90, 30, 75, 50, 20].map((h, i) => (
                                 <div key={i} className="flex-1 flex flex-col items-center gap-2">
                                     <div className={`w-full rounded-t-xl transition-all duration-1000 ${i === 2 ? 'bg-amber-500' : 'bg-slate-100'}`} style={{ height: `${h}%` }}></div>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
     Star, Users, BookOpen, Clock, BarChart,
     CheckCircle2, ChevronDown, Play, Lock,
@@ -9,12 +9,15 @@ import { useCourseStore } from '../store/useCourseStore';
 import { useEnrollmentStore } from '../store/useEnrollmentStore';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/api';
 import CourseReviews from '../components/Review/CourseReviews';
 import ForumSection from '../components/course/ForumSection';
+import { Breadcrumb } from '../components/common/Breadcrumb';
 
 const CourseDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
     const [activeAccordion, setActiveAccordion] = useState<string | null>('m1');
     const { courses, loadCourseDetail, getCurriculumIndex } = useCourseStore();
     const { enrolledCourses, enrollCourse, syncEnrollments } = useEnrollmentStore();
@@ -33,15 +36,11 @@ const CourseDetails: React.FC = () => {
 
     useEffect(() => {
         if (!id) return;
-
-        if (!course || !course.curriculum || course.curriculum.length === 0) {
-            loadCourseDetail(id);
-        }
-
+        loadCourseDetail(id);
         if (user?.role === 'STUDENT') {
             syncEnrollments();
         }
-    }, [id, course?.curriculum?.length, user?.role, syncEnrollments]);
+    }, [id, user?.role]);
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -67,6 +66,18 @@ const CourseDetails: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50/50 pb-20">
+            {/* Breadcrumb */}
+            <div className="bg-gray-100 border-b border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 py-3">
+                    <Breadcrumb 
+                        items={[
+                            { label: 'Danh mục khóa học', path: '/courses' },
+                            { label: course.title }
+                        ]} 
+                    />
+                </div>
+            </div>
+
             {/* Dark Header Section */}
             <div className="bg-gray-900 pt-32 pb-16 md:pb-24 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-1/3 h-full bg-amber-500/10 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
@@ -89,6 +100,23 @@ const CourseDetails: React.FC = () => {
                                 <span className="bg-white/10 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
                                     {course.level}
                                 </span>
+                                {course.isRequired && (
+                                    <span className="bg-rose-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                        Bắt buộc
+                                    </span>
+                                )}
+                                {(course as any).durationType && (
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                        (course as any).durationType === 'lifetime' 
+                                            ? 'bg-emerald-500/20 text-emerald-400' 
+                                            : 'bg-amber-500/20 text-amber-400'
+                                    }`}>
+                                        {(course as any).durationType === 'lifetime' 
+                                            ? 'Vĩnh viễn' 
+                                            : `${(course as any).durationValue} ${(course as any).durationUnit === 'months' ? 'tháng' : (course as any).durationUnit === 'years' ? 'năm' : 'ngày'}`
+                                        }
+                                    </span>
+                                )}
                                 <span className="flex items-center gap-1.5 text-gray-400 text-[10px] font-bold uppercase ml-2">
                                     <Clock size={12} />
                                     Cập nhật {course.lastUpdated ? new Date(course.lastUpdated).toLocaleDateString('vi-VN') : 'Unknown'}
@@ -165,7 +193,7 @@ const CourseDetails: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <h2 className="text-2xl font-black text-gray-900">Nội dung khóa học</h2>
                                 <p className="text-sm font-bold text-gray-500">
-                                    {(curriculumIndex?.moduleIds.length ?? course.curriculum.length)} chương • {(curriculumIndex?.lessonIds.length ?? course.totalLessons)} bài học
+                                    {(curriculumIndex?.moduleIds.length || course.curriculum.length)} chương • {(curriculumIndex?.lessonIds.length || course.totalLessons)} bài học
                                 </p>
                             </div>
 
@@ -292,13 +320,68 @@ const CourseDetails: React.FC = () => {
                                 </div>
                                 <p className="text-gray-500 text-sm font-bold flex items-center gap-1 mt-1">
                                     <ShieldCheck size={14} className="text-emerald-500" />
-                                    {course.price === 0 ? 'Mở đăng ký công khai' : 'Mua một lần, sở hữu trọn đời'}
+                                    {(course as any).durationType === 'lifetime' 
+                                        ? 'Truy cập vĩnh viễn' 
+                                        : (course as any).durationType === 'fixed' && (course as any).durationValue
+                                            ? `Thời hạn: ${(course as any).durationValue} ${(course as any).durationUnit === 'months' ? 'tháng' : (course as any).durationUnit === 'years' ? 'năm' : 'ngày'}`
+                                            : course.price === 0 ? 'Mở đăng ký công khai' : 'Mua một lần, sở hữu trọn đời'
+                                    }
                                 </p>
+                                {(course as any).renewalDiscountPercent > 0 && (course as any).durationType !== 'lifetime' && (
+                                    <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                        <span className="bg-emerald-100 px-2 py-0.5 rounded-full">Giảm {(course as any).renewalDiscountPercent}% khi gia hạn</span>
+                                    </p>
+                                )}
                             </div>
 
                             {/* Actions */}
                             <div className="space-y-3">
-                                {isEnrolled ? (
+                                {user?.role === 'TEACHER' ? (
+                                    // Teacher-specific UI
+                                    <div className="space-y-3">
+                                        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
+                                            <p className="text-sm font-bold text-blue-800 mb-2">Bạn là giảng viên</p>
+                                            <p className="text-xs text-blue-600">Bạn có quyền truy cập đặc biệt vào khóa học này</p>
+                                        </div>
+                                        <button
+                                            onClick={() => navigate(`/teacher/courses/${id}/edit`)}
+                                            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            Quản lý khóa học
+                                            <ArrowRight size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => navigate(`/course/${id}/lesson`)}
+                                            className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            Xem nội dung khóa học
+                                            <Play size={18} />
+                                        </button>
+                                    </div>
+                                ) : user?.role === 'ADMIN' ? (
+                                    // Admin-specific UI
+                                    <div className="space-y-3">
+                                        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 text-center">
+                                            <p className="text-sm font-bold text-purple-800 mb-2">Bạn là quản trị viên</p>
+                                            <p className="text-xs text-purple-600">Bạn có quyền truy cập toàn bộ khóa học</p>
+                                        </div>
+                                        <button
+                                            onClick={() => navigate(`/admin/courses`)}
+                                            className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            Quản lý khóa học
+                                            <ArrowRight size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => navigate(`/course/${id}/lesson`)}
+                                            className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            Xem nội dung khóa học
+                                            <Play size={18} />
+                                        </button>
+                                    </div>
+                                ) : isEnrolled ? (
+                                    // Student - already enrolled
                                     <button
                                         onClick={() => navigate(`/course/${id}/lesson`)}
                                         className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-2xl shadow-xl shadow-emerald-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
@@ -306,17 +389,22 @@ const CourseDetails: React.FC = () => {
                                         VÀO HỌC NGAY
                                         <Play size={20} />
                                     </button>
-                                ) : (
+                                ) : course.price === 0 ? (
+                                    // Student - free course
                                     <button
                                         onClick={async () => {
                                             if (!id) return;
-                                            if ((course?.price ?? 0) > 0) {
-                                                navigate(`/payment?courseId=${encodeURIComponent(id)}`);
+                                            if (!user) {
+                                                navigate('/login', { state: { from: location } });
                                                 return;
                                             }
                                             try {
+                                                const check = await apiRequest<{ allowed: boolean; reason?: string }>(`learning-paths/enroll-check/${id}`);
+                                                if (!check.allowed) {
+                                                    toast.error(check.reason || 'Bạn không đủ điều kiện đăng ký khóa học này');
+                                                    return;
+                                                }
                                                 await enrollCourse(id);
-                                                // Wait a bit to ensure store is synced
                                                 setTimeout(() => {
                                                     navigate(`/course/${id}/lesson`);
                                                 }, 300);
@@ -326,7 +414,32 @@ const CourseDetails: React.FC = () => {
                                         }}
                                         className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-2xl shadow-xl shadow-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
                                     >
-                                        {course.price === 0 ? 'GHI DANH NGAY' : 'MUA KHÓA HỌC'}
+                                        GHI DANH NGAY
+                                        <ArrowRight size={20} />
+                                    </button>
+                                ) : (
+                                    // Student - paid course
+                                    <button
+                                        onClick={async () => {
+                                            if (!id) return;
+                                            if (!user) {
+                                                navigate('/login', { state: { from: location } });
+                                                return;
+                                            }
+                                            try {
+                                                const check = await apiRequest<{ allowed: boolean; reason?: string }>(`learning-paths/enroll-check/${id}`);
+                                                if (!check.allowed) {
+                                                    toast.error(check.reason || 'Bạn không đủ điều kiện đăng ký khóa học này');
+                                                    return;
+                                                }
+                                                navigate(`/payment?courseId=${encodeURIComponent(id)}`);
+                                            } catch (err) {
+                                                toast.error(err instanceof Error ? err.message : 'Không thể kiểm tra điều kiện đăng ký');
+                                            }
+                                        }}
+                                        className="w-full py-5 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-2xl shadow-xl shadow-amber-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-lg"
+                                    >
+                                        ĐĂNG KÝ HỌC
                                         <ArrowRight size={20} />
                                     </button>
                                 )}
@@ -337,7 +450,14 @@ const CourseDetails: React.FC = () => {
                                 <p className="font-bold text-gray-800 text-sm">Khóa học bao gồm:</p>
                                 <div className="space-y-3">
                                     {[
-                                        { icon: Clock, text: `Thời gian học: ${course.duration}` },
+                                        { 
+                                            icon: Clock, 
+                                            text: course.durationType === 'lifetime' 
+                                                ? 'Thời hạn: Vĩnh viễn'
+                                                : course.durationType === 'fixed' && course.durationValue
+                                                    ? `Thời hạn: ${course.durationValue} ${course.durationUnit === 'months' ? 'tháng' : course.durationUnit === 'years' ? 'năm' : 'ngày'}`
+                                                    : 'Thời hạn: Vĩnh viễn'
+                                        },
                                         { icon: BookOpen, text: `${course.totalLessons} bài giảng/tài liệu` },
                                         { icon: BarChart, text: `Cấp độ: ${course.level}` },
                                         { icon: ShieldCheck, text: 'Hệ thống bảo mật nội bộ' },

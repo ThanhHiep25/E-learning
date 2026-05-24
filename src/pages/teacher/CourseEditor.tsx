@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft, Save, Trash2,
-    BarChart, Clock, Hash,
+    BarChart, Hash,
     Image as ImageIcon, Layout, Plus, X, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useCourseStore } from '../../store/useCourseStore';
@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { type Course } from '../../config/mock-data';
 import { teacherService } from '../../services/teacher.service';
 import { categoryService, type BackendCategory } from '../../services/category.service';
+import { CourseDurationEditor } from '../../components/teacher/CourseDurationEditor';
 
 const CATEGORIES = [
     'Bứt phá vào 10',
@@ -19,7 +20,7 @@ const CATEGORIES = [
     'Tin học văn phòng'
 ];
 
-const LEVELS = ['Mọi cấp độ', 'Cơ bản', 'Sơ cấp', 'Trung cấp', 'Nâng cao'] as const;
+const LEVELS = ['beginner', 'elementary', 'intermediate', 'upper-intermediate', 'advanced', 'proficiency', 'all-levels'] as const;
 
 const CourseEditor: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -32,15 +33,13 @@ const CourseEditor: React.FC = () => {
     const [isThumbUploading, setIsThumbUploading] = useState(false);
     const [previewThumb, setPreviewThumb] = useState<string | null>(null);
     const [categories, setCategories] = useState<BackendCategory[]>([]);
-    const [visibility, setVisibility] = useState<'draft' | 'published' | 'private'>('draft');
     const [formData, setFormData] = useState<Partial<Course>>({
         title: '',
         description: '',
         category: CATEGORIES[0],
         level: LEVELS[0],
-        duration: '',
         teacher: user?.fullName || 'Giảng viên',
-        teacherAvatar: user?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=teacher',
+        teacherAvatar: user?.avatar || '/default-avatar.png',
         image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&q=80',
         rating: 5.0,
         reviewCount: 0,
@@ -49,7 +48,17 @@ const CourseEditor: React.FC = () => {
         curriculum: [],
         willLearn: [],
         requirements: [],
-        price: 0
+        price: 0,
+        isRequired: false,
+    } as any);
+
+    // Duration settings (separate from formData type)
+    const [durationSettings, setDurationSettings] = useState({
+        durationType: 'lifetime' as 'lifetime' | 'fixed' | 'subscription',
+        durationValue: undefined as number | undefined,
+        durationUnit: undefined as 'days' | 'months' | 'years' | undefined,
+        renewalDiscountPercent: 0,
+        gracePeriodDays: 7,
     });
 
     const [newItem, setNewItem] = useState({ willLearn: '', requirement: '' });
@@ -78,12 +87,7 @@ const CourseEditor: React.FC = () => {
         const load = async () => {
             if (!isEditMode || !id) return;
 
-            const course = courses.find(c => String(c.id) === String(id));
-            if (course) {
-                setFormData(course as any);
-                return;
-            }
-
+            // Always fetch from API to get full data including duration settings
             try {
                 const ownerCourse = await teacherService.getCourseForOwner(String(id));
                 setFormData((prev) => {
@@ -100,20 +104,53 @@ const CourseEditor: React.FC = () => {
                         return [];
                     };
 
+                    const oc = ownerCourse as any;
+
+                    // Map chapters/lectures to curriculum format
+                    const mapCurriculum = (chapters: any[]) => {
+                        if (!Array.isArray(chapters)) return [];
+                        return chapters.map((ch: any) => ({
+                            id: ch.id,
+                            title: ch.title,
+                            lessons: ch.lectures?.map((lec: any) => ({
+                                id: lec.id,
+                                title: lec.title,
+                                duration: lec.duration || 0,
+                                isPreview: lec.isPreview || false,
+                                videoUrl: lec.videoUrl || '',
+                                attachments: lec.attachments || []
+                            })) || []
+                        }));
+                    };
+
+                    // Set duration settings separately
+                    setDurationSettings({
+                        durationType: oc.durationType || 'lifetime',
+                        durationValue: oc.durationValue,
+                        durationUnit: oc.durationUnit,
+                        renewalDiscountPercent: oc.renewalDiscountPercent || 0,
+                        gracePeriodDays: oc.gracePeriodDays || 7,
+                    });
+
                     return {
                         ...prev,
-                        title: ownerCourse.title || '',
-                        description: ownerCourse.description || '',
-                        image: ownerCourse.imageUrl || prev.image,
-                        level: (ownerCourse.level as any) || LEVELS[0],
-                        duration: ownerCourse.duration || '',
-                        willLearn: parseArray(ownerCourse.willLearn),
-                        requirements: parseArray(ownerCourse.requirements),
-                        price: Number(ownerCourse.price || 0),
+                        id: oc.id,
+                        title: oc.title || '',
+                        description: oc.description || '',
+                        image: oc.imageUrl || prev.image,
+                        level: (oc.level as any) || LEVELS[0],
+                        categoryId: oc.categoryId,
+                        willLearn: parseArray(oc.willLearn),
+                        requirements: parseArray(oc.requirements),
+                        price: Number(oc.price || 0),
+                        curriculum: mapCurriculum(oc.chapters),
+                        published: oc.published || false,
+                        totalLessons: oc.totalLessons || 0,
+                        students: oc.students || 0,
+                        isRequired: oc.isRequired || false,
                     };
                 });
 
-                setVisibility(ownerCourse.published ? 'published' : 'draft');
             } catch (e) {
                 toast.error(e instanceof Error ? e.message : 'Không thể tải khóa học');
                 navigate('/teacher/dashboard');
@@ -159,21 +196,25 @@ const CourseEditor: React.FC = () => {
 
         try {
             setIsSaving(true);
-            const published = visibility === 'published';
             if (isEditMode && id) {
                 await teacherService.updateCourse(String(id), {
                     title: String(formData.title),
                     description: String(formData.description),
                     level: String(formData.level || LEVELS[0]),
-                    duration: String(formData.duration || ''),
                     willLearn: Array.isArray(formData.willLearn) ? formData.willLearn : [],
                     requirements: Array.isArray(formData.requirements) ? formData.requirements : [],
-                    published,
                     categoryId: (formData as any).categoryId ?? null,
                     imageUrl: String(formData.image || ''),
                     price: Number(formData.price || 0),
-                });
-                toast.success('Cập nhật khóa học thành công!');
+                    // Duration settings
+                    durationType: durationSettings.durationType,
+                    durationValue: durationSettings.durationValue,
+                    durationUnit: durationSettings.durationUnit,
+                    renewalDiscountPercent: durationSettings.renewalDiscountPercent,
+                    gracePeriodDays: durationSettings.gracePeriodDays,
+                    isRequired: Boolean((formData as any).isRequired),
+                } as any);
+                toast.success('Cập nhật thành công. Nếu khóa học đã xuất bản trước đó, hệ thống sẽ tự chuyển về trạng thái chờ duyệt.');
                 navigate(`/teacher/content-editor/${encodeURIComponent(String(id))}`);
                 return;
             }
@@ -183,14 +224,19 @@ const CourseEditor: React.FC = () => {
                 description: String(formData.description),
                 imageUrl: String(formData.image || ''),
                 level: String(formData.level || LEVELS[0]),
-                duration: String(formData.duration || ''),
                 willLearn: Array.isArray(formData.willLearn) ? formData.willLearn : [],
                 requirements: Array.isArray(formData.requirements) ? formData.requirements : [],
-                published,
                 price: Number(formData.price || 0),
                 categoryId: (formData as any).categoryId ?? null,
+                isRequired: Boolean((formData as any).isRequired),
                 tags: [],
-            });
+                // Duration settings
+                durationType: durationSettings.durationType,
+                durationValue: durationSettings.durationValue,
+                durationUnit: durationSettings.durationUnit,
+                renewalDiscountPercent: durationSettings.renewalDiscountPercent,
+                gracePeriodDays: durationSettings.gracePeriodDays,
+            } as any);
 
             toast.success('Tạo khóa học thành công!');
             navigate(`/teacher/content-editor/${encodeURIComponent(String(created.id))}`);
@@ -230,7 +276,7 @@ const CourseEditor: React.FC = () => {
                             className="flex items-center gap-2 bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-amber-600 transition-all shadow-xl shadow-gray-200 active:scale-95 cursor-pointer"
                         >
                             <Save size={18} />
-                            {isEditMode ? 'Cập nhật thay đổi' : visibility === 'published' ? 'Công khai khóa học' : 'Lưu khóa học'}
+                            {isEditMode ? 'Cập nhật thay đổi' : 'Lưu khóa học'}
                         </button>
                     </div>
                 </div>
@@ -492,7 +538,7 @@ const CourseEditor: React.FC = () => {
                                     </div>
                                     <input
                                         type="number"
-                                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-sm text-gray-900"
+                                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-sm text-gray-900 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         placeholder="Ví dụ: 299000 (0 = Miễn phí)"
                                         value={formData.price === 0 ? '' : formData.price}
                                         onChange={e => {
@@ -505,25 +551,22 @@ const CourseEditor: React.FC = () => {
                                     </p>
                                 </div>
 
+                                {/* Course Duration Settings - Compact */}
+                                <div className="pt-3 border-t border-gray-100">
+                                    <CourseDurationEditor
+                                        value={durationSettings}
+                                        onChange={setDurationSettings}
+                                    />
+                                </div>
+
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2 text-md font-bold text-gray-400 ml-1">
                                         <Layout size={12} className="text-amber-500" />
                                         Trạng thái hiển thị
                                     </div>
-                                    <select
-                                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-xs text-gray-900 cursor-pointer appearance-none uppercase tracking-wider"
-                                        value={visibility}
-                                        onChange={(e) => setVisibility(e.target.value as any)}
-                                    >
-                                        <option value="draft">Nháp</option>
-                                        <option value="published">Công khai</option>
-                                        <option value="private">Không công khai</option>
-                                    </select>
-                                    {visibility === 'private' && (
-                                        <div className="text-xs font-bold text-gray-400">
-                                            Hiện backend mới có trường "published". Tùy chọn "Không công khai" sẽ được lưu tương đương "Nháp".
-                                        </div>
-                                    )}
+                                    <div className="w-full px-5 py-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs font-bold text-amber-700">
+                                        Giáo viên không thể tự publish. Sau khi chỉnh sửa, hãy gửi khóa học để admin duyệt.
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
@@ -542,19 +585,19 @@ const CourseEditor: React.FC = () => {
                                     </select>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-md font-bold text-gray-400 ml-1">
-                                        <Clock size={12} className="text-amber-500" />
-                                        Thời lượng
-                                    </div>
+                                <div className="flex items-center gap-3 px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl">
                                     <input
-                                        type="text"
-                                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:border-amber-500 transition-all font-bold text-sm text-gray-900"
-                                        placeholder="Ví dụ: 24 giờ 30 phút"
-                                        value={formData.duration}
-                                        onChange={e => setFormData({ ...formData, duration: e.target.value })}
+                                        id="isRequired"
+                                        type="checkbox"
+                                        className="w-5 h-5 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                                        checked={Boolean((formData as any).isRequired)}
+                                        onChange={e => setFormData({ ...formData, isRequired: e.target.checked } as any)}
                                     />
+                                    <label htmlFor="isRequired" className="text-sm font-bold text-gray-700 cursor-pointer select-none">
+                                        Khóa học bắt buộc
+                                    </label>
                                 </div>
+
                             </div>
 
                             {isEditMode && (

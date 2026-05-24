@@ -4,7 +4,8 @@ import {
     ClipboardList, Clock,
     Calendar, ChevronRight, Search,
     AlertCircle, CheckCircle2,
-    Play, RotateCcw, Eye, Loader2
+    Play, RotateCcw, Eye, Loader2,
+    Trophy
 } from 'lucide-react';
 import { quizService, type StudentQuiz } from '../services/quiz.service';
 import toast from 'react-hot-toast';
@@ -167,6 +168,11 @@ const MyTests: React.FC = () => {
                                             {quiz.type === 'placement' && (
                                                 <div className="px-4 py-1.5 rounded-2xl text-[12px] font-black bg-rose-500 text-white border-rose-500 uppercase tracking-tighter">
                                                     Test Đầu Vào
+                                                </div>
+                                            )}
+                                            {quiz.isLevelFinal && (
+                                                <div className="px-4 py-1.5 rounded-2xl text-[12px] font-black bg-amber-500 text-white border-amber-500 uppercase tracking-tighter flex items-center gap-1">
+                                                    <Trophy size={12} /> Kiểm tra cuối {quiz.level}
                                                 </div>
                                             )}
                                             <span className="text-[11px] font-bold text-slate-400">

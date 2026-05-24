@@ -33,7 +33,7 @@ export const scheduleService = {
         if (params.to) query.append('to', params.to);
 
         const queryString = query.toString();
-        const path = `student/schedule${queryString ? `?${queryString}` : ''}`;
+        const path = `student/learning-schedule${queryString ? `?${queryString}` : ''}`;
         
         const response = await apiRequest<{ schedule: ScheduleItem[] }>(path);
         return response;

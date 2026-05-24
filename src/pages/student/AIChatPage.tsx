@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, Loader2, MessageSquare, RotateCcw, Trash2, Search, BookOpen, Menu, X } from 'lucide-react';
+import { Send, User, Loader2, MessageSquare, RotateCcw, Trash2, Search, BookOpen, Menu, X, ArrowRight, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { aiService, type AiMessage, type AiConversation } from '../../services/ai.service';
@@ -108,7 +108,8 @@ const AIChatPage: React.FC = () => {
     try {
       if (!currentConv) {
         currentConv = await aiService.createConversation({
-          title: userMsg.substring(0, 30) + '...'
+          title: userMsg.substring(0, 30) + '...',
+          forceCreate: true
         });
         setConversation(currentConv);
         fetchHistory();
@@ -129,41 +130,89 @@ const AIChatPage: React.FC = () => {
 
   const navigate = useNavigate();
 
-  const renderMessageContent = (content: string) => {
-    // Pattern: COURSE_CARD(slug|title|level)
-    const parts = content.split(/(COURSE_CARD\([^\)]+\))/g);
+  const renderMessageContent = (content: string | undefined | null) => {
+    if (!content) return null;
+    
+    // Clean up common markdown issues from AI response
+    const cleanContent = content
+      .replace(/\\\*\*/g, '**')  // Fix escaped bold: \** -> **
+      .replace(/\\\*/g, '*')     // Fix escaped italic: \* -> *
+      .replace(/^\s*\*\s+/gm, '* ');  // Normalize list item spacing
+    
+    // Pattern: COURSE_CARD(id|title|level)
+    const parts = cleanContent.split(/(COURSE_CARD\([^)]+\))/g);
     return parts.map((part, i) => {
       if (part.startsWith('COURSE_CARD(')) {
         const match = part.match(/COURSE_CARD\(([^|]+)\|([^|]+)\|([^)]+)\)/);
         if (match) {
           const [_, courseId, title, level] = match;
+          // Map level to colors
+          const levelColors: Record<string, { bg: string; text: string; dot: string }> = {
+            'BEGINNER': { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+            'ELEMENTARY': { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' },
+            'INTERMEDIATE': { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
+            'UPPER-INTERMEDIATE': { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500' },
+            'ADVANCED': { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-500' },
+            'C2': { bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500' },
+          };
+          const colors = levelColors[level.toUpperCase()] || { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' };
+          
           return (
-            <div key={i} className="my-6 p-5 bg-white border-2 border-amber-500/10 rounded-[30px] shadow-sm flex items-center justify-between gap-6 animate-in zoom-in-95 duration-500 ring-1 ring-amber-500/5 group hover:border-amber-500/30 transition-all">
-              <div className="flex items-center gap-5 overflow-hidden">
-                <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-amber-100 transition-colors">
-                  <BookOpen className="text-amber-600" size={28} />
+            <div 
+              key={i} 
+              className="my-5 relative overflow-hidden bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)] border border-gray-100/80 group hover:shadow-[0_8px_30px_-4px_rgba(251,191,36,0.25)] hover:border-amber-200/60 transition-all duration-500 animate-in zoom-in-95"
+            >
+              {/* Gradient background on hover */}
+              <div className="absolute inset-0 bg-gradient-to-br from-amber-50/50 via-white to-orange-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              
+              {/* Left accent line */}
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-500 rounded-l-3xl" />
+              
+              <div className="relative p-5 flex items-center gap-4">
+                {/* Course thumbnail with gradient */}
+                <div className="relative w-16 h-16 shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl rotate-3 group-hover:rotate-6 transition-transform duration-300" />
+                  <div className="absolute inset-0 bg-white rounded-2xl flex items-center justify-center shadow-inner">
+                    <BookOpen className="text-amber-500" size={28} strokeWidth={1.5} />
+                  </div>
+                  {/* Sparkle decoration */}
+                  <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
-                <div className="overflow-hidden text-left">
-                  <p className="text-base font-black text-slate-900 truncate leading-tight">{title}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">{level}</p>
+                
+                {/* Course info */}
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-[15px] font-bold text-slate-900 leading-snug line-clamp-2 group-hover:text-amber-700 transition-colors">
+                    {title}
+                  </h4>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${colors.bg} ${colors.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+                      {level}
+                    </span>
                   </div>
                 </div>
+                
+                {/* CTA Button */}
+                <button
+                  onClick={() => navigate(`/course/${courseId}`)}
+                  className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-amber-500 hover:text-slate-900 transition-all duration-300 shadow-lg shadow-slate-900/10 hover:shadow-amber-500/30 active:scale-95 group/btn"
+                >
+                  <span>Xem chi tiết</span>
+                  <ArrowRight size={14} className="group-hover/btn:translate-x-0.5 transition-transform" />
+                </button>
               </div>
-              <button
-                onClick={() => navigate(`/course/${courseId}`)}
-                className="px-6 py-3 bg-slate-900 text-white text-[10px] font-black rounded-2xl hover:bg-amber-500 hover:text-slate-900 transition-all shrink-0 uppercase tracking-widest whitespace-nowrap shadow-lg shadow-slate-900/10 active:scale-90 cursor-pointer"
-              >
-                Xem chi tiết
-              </button>
             </div>
           );
         }
       }
       return (
-        <div key={i} className="prose prose-sm max-w-none prose-slate">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <div key={i} className="prose prose-sm max-w-none prose-slate prose-strong:text-inherit">
+          <ReactMarkdown 
+            remarkPlugins={[remarkGfm]}
+            components={{
+              strong: ({children}) => <strong className="font-bold text-inherit">{children}</strong>
+            }}
+          >
             {part}
           </ReactMarkdown>
         </div>
@@ -192,7 +241,7 @@ const AIChatPage: React.FC = () => {
             className="flex-1 bg-slate-900 text-white rounded-2xl py-4 px-6 flex items-center justify-center gap-3 font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-xl shadow-slate-900/10"
           >
             <RotateCcw size={18} />
-            Làm mới Chat
+            Tạo đoạn chat mới
           </button>
           <button
             onClick={() => setIsSidebarOpen(false)}
@@ -259,7 +308,7 @@ const AIChatPage: React.FC = () => {
               <h1 className="text-lg font-bold text-slate-900">Tutor v2.0</h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-bold text-gray-400">AI Online • Cố vấn học tập thông minh</span>
+                <span className="text-[10px] font-bold text-gray-400">AI Chat 24/7 • Cố vấn học tập thông minh</span>
               </div>
             </div>
           </div>
@@ -305,7 +354,7 @@ const AIChatPage: React.FC = () => {
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${msg.sender === 'user' ? 'bg-slate-900 text-white' : 'bg-amber-500 text-white'}`}>
                       {msg.sender === 'user' ? <User size={18} /> : <img src="/logoStill/elearning.png" alt="AI" className="w-6 h-6 md:w-8 md:h-8" />}
                     </div>
-                    <div className={`p-4 md:p-6 rounded-2xl md:rounded-[32px] text-sm md:text-base leading-relaxed shadow-sm border ${msg.sender === 'user' ? 'bg-slate-900 text-white rounded-tr-none border-slate-900' : 'bg-white text-gray-700 border-gray-100 rounded-tl-none'}`}>
+                    <div className={`p-4 md:p-6 rounded-2xl md:rounded-[32px] text-sm md:text-base leading-relaxed shadow-sm border max-w-full break-words ${msg.sender === 'user' ? 'bg-slate-900 text-white rounded-tr-none border-slate-900' : 'bg-white text-gray-700 border-gray-100 rounded-tl-none'}`}>
                       {msg.sender === 'user' ? (
                         <div className="whitespace-pre-wrap">{msg.content}</div>
                       ) : (

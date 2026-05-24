@@ -6,9 +6,16 @@ import {
   type FrontendCourse,
 } from "../services/course.service";
 
+interface EnrollmentMetadata {
+  expiresAt?: string | null;
+  enrollmentStatus?: 'active' | 'expired' | 'grace_period';
+  gracePeriodEndsAt?: string | null;
+}
+
 interface EnrollmentState {
   enrolledCourses: FrontendCourse[];
   courseProgress: Record<string, number>;
+  enrollmentMetadata: Record<string, EnrollmentMetadata>; // courseId -> metadata
   isLoading: boolean;
   error: string | null;
   syncEnrollments: () => Promise<void>;
@@ -24,6 +31,7 @@ export const useEnrollmentStore = create<EnrollmentState>()(
     (set, get) => ({
       enrolledCourses: [],
       courseProgress: {},
+      enrollmentMetadata: {},
       isLoading: false,
       error: null,
       syncEnrollments: async () => {
@@ -61,6 +69,12 @@ export const useEnrollmentStore = create<EnrollmentState>()(
                   tags: Array.isArray(c.tags) ? c.tags : [],
                   price: Number(c.price ?? 0),
                   lastUpdated: String(c.lastUpdated ?? ""),
+                  // Duration settings
+                  durationType: c.durationType,
+                  durationValue: c.durationValue,
+                  durationUnit: c.durationUnit,
+                  renewalDiscountPercent: c.renewalDiscountPercent,
+                  gracePeriodDays: c.gracePeriodDays,
                 };
               }
 
@@ -70,12 +84,32 @@ export const useEnrollmentStore = create<EnrollmentState>()(
               });
             });
 
+          // Deduplicate courses by id
+          const uniqueCourses: FrontendCourse[] = [];
+          const seenIds = new Set<string>();
+          for (const course of courses) {
+            if (!seenIds.has(course.id)) {
+              seenIds.add(course.id);
+              uniqueCourses.push(course);
+            }
+          }
+
           const progressMap: Record<string, number> = {};
+          const metadataMap: Record<string, EnrollmentMetadata> = {};
           enrollments.forEach((e) => {
-            progressMap[String(e.courseId)] = Number(e.progressPercent ?? 0);
+            const rawProgress = e.progressPercent ?? 0;
+            const progress = Math.min(100, Math.max(0, Number(rawProgress)));
+            const safeProgress = isNaN(progress) ? 0 : progress;
+            progressMap[String(e.courseId)] = safeProgress;
+            // Store enrollment metadata for expiration display
+            metadataMap[String(e.courseId)] = {
+              expiresAt: e.expiresAt,
+              enrollmentStatus: e.enrollmentStatus,
+              gracePeriodEndsAt: e.gracePeriodEndsAt,
+            };
           });
 
-          set({ enrolledCourses: courses, courseProgress: progressMap });
+          set({ enrolledCourses: uniqueCourses, courseProgress: progressMap, enrollmentMetadata: metadataMap });
         } catch (err) {
           set({
             error:
@@ -123,6 +157,7 @@ export const useEnrollmentStore = create<EnrollmentState>()(
         set({
           enrolledCourses: [],
           courseProgress: {},
+          enrollmentMetadata: {},
           isLoading: false,
           error: null,
         });

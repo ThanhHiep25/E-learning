@@ -2,9 +2,11 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { notificationService } from '../services/notification.service';
+import { tokenStorage } from '../services/api';
 import type { Notification } from '../services/notification.service';
 import { Flag } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 interface NotificationContextType {
     notifications: Notification[];
@@ -29,6 +31,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
@@ -149,7 +152,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // Initialize socket
         const socket = io(baseUrl, {
             withCredentials: true,
-            transports: ["websocket"],
+            transports: ["websocket"], // Fallback to polling if websocket fails
+            auth: { token: tokenStorage.get() }
         });
 
         socketRef.current = socket;
@@ -175,10 +179,83 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             setNotifications(prev => [normalizedNotification, ...prev]);
             setUnreadCount(prev => prev + 1);
             
-            // Show toast using global style
-            toast.success(`${notification.title}\n${notification.message}`, {
-                duration: 5000,
-            });
+            // Show toast with click handler
+            const toastId = toast.success(
+                <div 
+                    className="cursor-pointer"
+                    onClick={() => {
+                        toast.dismiss(toastId);
+                        // Navigate based on notification type
+                        const { type, payload = {} } = notification;
+                        const { courseId, quizId, lectureId, updateType, topicId } = payload;
+                        
+                        switch (type) {
+                            case 'quiz':
+                            case 'quiz_reminder':
+                                if (quizId) navigate(`/quiz/${quizId}`);
+                                else if (courseId) navigate(`/course/${courseId}/quiz`);
+                                break;
+                            case 'enrollment':
+                                if (courseId) navigate(`/course/${courseId}/lesson`);
+                                break;
+                            case 'payment':
+                                navigate('/orders');
+                                break;
+                            case 'course_update':
+                                if (courseId && updateType === 'new_lecture' && lectureId) {
+                                    navigate(`/course/${courseId}/lesson/${lectureId}`);
+                                } else if (courseId) {
+                                    navigate(`/course/${courseId}`);
+                                }
+                                break;
+                            case 'forum':
+                            case 'forum_ban':
+                            case 'forum_reaction':
+                            case 'forum_reply':
+                                if (topicId) navigate(`/forum/topic/${topicId}`);
+                                else navigate('/forum');
+                                break;
+                            case 'course_approved':
+                            case 'course_rejected':
+                                if (courseId) navigate(`/teacher/courses/${courseId}`);
+                                else navigate('/teacher/courses');
+                                break;
+                            case 'system':
+                                // Handle chat escalation
+                                if (payload?.type === 'chat_escalation' || payload?.type === 'course_chat_escalation') {
+                                    // Teacher escalation - navigate to teacher chat
+                                    const { courseId, lessonId, escalationId, messageId } = payload;
+                                    if (lessonId) {
+                                        navigate(`/teacher/lecture-chat/${lessonId}?escalationId=${escalationId}&messageId=${messageId}`);
+                                    } else if (courseId) {
+                                        navigate(`/teacher/chat/${courseId}?escalationId=${escalationId}&messageId=${messageId}`);
+                                    } else {
+                                        navigate('/teacher/chats');
+                                    }
+                                } else if (payload?.type === 'chat_escalation_admin' || payload?.type === 'course_chat_escalation_admin') {
+                                    // Admin escalation - navigate to admin chat
+                                    const { courseId, lessonId, escalationId, messageId } = payload;
+                                    if (lessonId) {
+                                        navigate(`/admin/lecture-chat/${lessonId}?escalationId=${escalationId}&messageId=${messageId}`);
+                                    } else if (courseId) {
+                                        navigate(`/admin/chat/${courseId}?escalationId=${escalationId}&messageId=${messageId}`);
+                                    } else {
+                                        navigate('/admin/chats');
+                                    }
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                    }}
+                >
+                    <p className="font-semibold">{notification.title}</p>
+                    <p className="text-sm">{notification.message}</p>
+                </div>,
+                {
+                    duration: 5000,
+                }
+            );
         });
 
         socket.on('new_report', (data: any) => {

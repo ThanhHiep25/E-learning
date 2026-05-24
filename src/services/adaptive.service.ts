@@ -14,7 +14,11 @@ export interface PlacementQuiz {
     options?: any;
     segments?: string[];
     points: number;
-    currentQuestion?: number; // Actual question number from session
+    currentQuestion?: number;
+    correctAnswer?: string;
+    cefrLevel?: string;
+    skillType?: string;
+    difficultyScore?: number;
   }>;
   totalQuestions?: number;
   currentQuestion?: number;
@@ -170,20 +174,11 @@ export const adaptiveService = {
    * Creates session with selfAssessedLevel and returns quiz to take
    */
   getBeginnerPlacementTest: async (_categoryId: number): Promise<PlacementQuiz> => {
-    console.log('[Placement] Starting beginner test (from zero)');
-    
     // Start session with EMPTY body - let BE determine starting level
     const session = await placementService.startSession();
-    
-    console.log('[Placement] Session created:', session.sessionId, 'status:', session.status, 'startingLevel:', session.startingLevel);
 
-    // Fetch ONLY the first question
-    console.log('[Placement] Fetching first question...');
-    
     const result = await placementService.getNextQuestion(session.sessionId);
-    
-    console.log('[Placement] Got first question result:', JSON.stringify(result));
-    
+
     if (result.completed) {
       throw new Error('Bài test đã hoàn thành ngay sau khi bắt đầu');
     }
@@ -220,15 +215,10 @@ export const adaptiveService = {
   /**
    * Fetch next question for ongoing placement test
    */
-  fetchNextQuestion: async (sessionId: number): Promise<PlacementQuiz['questions'][0] | null> => {
-    console.log('[Placement] Fetching next question for session:', sessionId);
-    
-    const result = await placementService.getNextQuestion(sessionId);
-    
-    console.log('[Placement] Got next question result:', JSON.stringify(result));
-    
+  fetchNextQuestion: async (sessionId: number, demoMode: boolean = false): Promise<PlacementQuiz['questions'][0] | null> => {
+    const result = await placementService.getNextQuestion(sessionId, demoMode);
+
     if (result.completed) {
-      console.log('[Placement] Test completed, no more questions');
       return null;
     }
 
@@ -250,7 +240,11 @@ export const adaptiveService = {
       options: q.options,
       segments: q.segments,
       points: 1,
-      currentQuestion: q.currentQuestion, // Include actual question number from session
+      currentQuestion: q.currentQuestion,
+      correctAnswer: q.correctAnswer,
+      cefrLevel: q.cefrLevel,
+      skillType: q.skillType,
+      difficultyScore: q.difficultyScore,
     };
   },
 
@@ -417,22 +411,17 @@ export const adaptiveService = {
   } | null> => {
     try {
       const history = await placementService.getHistory({ limit: 10 });
-      console.log('[DEBUG] placementService.getHistory returned:', history);
 
       if (!history.history || history.history.length === 0) {
-        console.log('[DEBUG] No history found');
         return null;
       }
 
       // Filter completed sessions - accept if status is completed OR if has finalLevel without status
-      console.log('[DEBUG] All history items:', JSON.stringify(history.history.map((h: any) => ({ id: h.id, status: h.status, finalLevel: h.finalLevel })), null, 2));
       const completed = history.history.filter(
         (h: any) => (h.status === "completed" || !h.status) && (h.finalLevel || h.finalCefrLevel)
       );
-      console.log('[DEBUG] Completed sessions:', completed);
 
       if (completed.length === 0) {
-        console.log('[DEBUG] No completed sessions with finalCefrLevel');
         return null;
       }
 
@@ -457,12 +446,10 @@ export const adaptiveService = {
         };
       };
 
-      const result = {
+      return {
         latest: mapItem(completed[0]),
         all: completed.map(mapItem),
       };
-      console.log('[DEBUG] getAssessmentStatus result:', result);
-      return result;
     } catch (err) {
       console.error("Failed to get assessment status:", err);
       return null;

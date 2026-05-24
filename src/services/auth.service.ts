@@ -71,8 +71,7 @@ export function mapBackendUserToFrontend(user: BackendUser): FrontendUser {
     email: user.email,
     role: roleToFrontend(user.role),
     avatar:
-      user.avatar ||
-      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
+      user.avatar || '/default-avatar.png',
     phone: user.phone,
     joinDate: user.createdAt,
     enrolledCourses: [],
@@ -141,13 +140,13 @@ export const authService = {
   },
 
   async verifyEmailCode(
-    token: string,
+    code: string,
   ): Promise<{ user: FrontendUser; token?: string }> {
     const data = await apiRequest<{ user: BackendUser; token?: string }>(
       "auth/verify-email-code",
       {
         method: "POST",
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ code }),
         auth: false,
       },
     );

@@ -9,34 +9,14 @@ import {
     MapPin,
     ArrowRight,
     MessageCircle,
-    Instagram,
-    Send
+    Instagram
 } from 'lucide-react';
 
 const Footer: React.FC = () => {
     return (
         <footer className="bg-white border-t border-gray-100 relative overflow-hidden">
             {/* Newsletter Section */}
-            <div className="bg-[#A32323] py-12">
-                <div className="max-w-[1440px] mx-auto px-4 md:px-8 flex flex-col md:flex-row items-center justify-between gap-8">
-                    <div className="text-white">
-                        <h3 className="text-2xl md:text-3xl font-bold mb-2">Đăng ký nhận bản tin ngay</h3>
-                        <p className="text-white/80">Nhận thông báo về các khóa học mới và ưu đãi hấp dẫn nhất từ E-Learning.</p>
-                    </div>
-                    <div className="w-full md:max-w-md">
-                        <form className="relative flex items-center group">
-                            <input
-                                type="email"
-                                placeholder="Nhập địa chỉ email của bạn..."
-                                className="w-full bg-white/10 border border-white/20 text-white placeholder-white/60 px-6 py-4 rounded-full outline-none focus:bg-white/20 focus:border-white/40 transition-all pr-14"
-                            />
-                            <button className="absolute right-1.5 w-11 h-11 bg-amber-500 text-white rounded-full flex items-center justify-center hover:bg-amber-600 transition-all shadow-lg cursor-pointer">
-                                <Send size={20} />
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+            
 
             <div className="max-w-[1440px] mx-auto px-4 md:px-8 py-16">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
@@ -75,25 +55,25 @@ const Footer: React.FC = () => {
                             <li>
                                 <NavLink to="/vào-10" className="text-gray-500 hover:text-red-500 hover:translate-x-1 transition-all flex items-center gap-2 group">
                                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-all" />
-                                    Luyện thi vào lớp 10
+                                    Level A1
                                 </NavLink>
                             </li>
                             <li>
                                 <NavLink to="/toeic" className="text-gray-500 hover:text-red-500 hover:translate-x-1 transition-all flex items-center gap-2 group">
                                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-all" />
-                                    Luyện thi TOEIC
+                                    Level A2
                                 </NavLink>
                             </li>
                             <li>
                                 <NavLink to="/combo-lap-trinh" className="text-gray-500 hover:text-red-500 hover:translate-x-1 transition-all flex items-center gap-2 group">
                                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-all" />
-                                    Combo Lập trình
+                                    Level B1
                                 </NavLink>
                             </li>
                             <li>
                                 <NavLink to="/books" className="text-gray-500 hover:text-red-500 hover:translate-x-1 transition-all flex items-center gap-2 group">
                                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-all" />
-                                    Kho sách tài liệu
+                                    Level B2
                                 </NavLink>
                             </li>
                         </ul>
@@ -138,19 +118,19 @@ const Footer: React.FC = () => {
                                 <div className="p-2 bg-red-50 text-red-500 rounded-lg shrink-0">
                                     <MapPin size={18} />
                                 </div>
-                                <p className="text-gray-500 text-sm">Tầng 15, Tòa nhà CEO, Phạm Hùng, Nam Từ Liêm, Hà Nội</p>
+                                <p className="text-gray-500 text-sm">12 Nguyễn Văn Bảo, Hạnh Thông, Hồ Chí Minh</p>
                             </div>
                             <div className="flex items-start gap-3">
                                 <div className="p-2 bg-blue-50 text-blue-500 rounded-lg shrink-0">
                                     <Phone size={18} />
                                 </div>
-                                <p className="text-gray-500 text-sm">Hotline: 1900 6789</p>
+                                <p className="text-gray-500 text-sm">Hotline: 0981975303</p>
                             </div>
                             <div className="flex items-start gap-3">
                                 <div className="p-2 bg-amber-50 text-amber-500 rounded-lg shrink-0">
                                     <Mail size={18} />
                                 </div>
-                                <p className="text-gray-500 text-sm">Email: support@elearning.vn</p>
+                                <p className="text-gray-500 text-sm">Email: Thaitrinh1306@gmail.com</p>
                             </div>
                         </div>
 

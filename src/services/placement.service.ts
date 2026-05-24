@@ -6,6 +6,7 @@ export type PlacementSession = {
   status: "in_progress" | "completed" | "abandoned";
   startingLevel: string;
   selfAssessedLevel?: string;
+  totalQuestions?: number;
 };
 
 export type PlacementQuestion = {
@@ -16,18 +17,31 @@ export type PlacementQuestion = {
   options: string[];
   segments?: string[];
   cefrLevel: string;
-  skillArea: "listening" | "reading" | "grammar" | "vocabulary";
+  skillArea?: "listening" | "reading" | "grammar" | "vocabulary";
+  skillType?: string;
+  difficultyScore?: number;
   audioText?: string;
   timeLimitSeconds?: number;
   audioUrl?: string;
   currentQuestion?: number;
+  totalQuestions?: number;
+  correctAnswer?: string;
 };
 
 export type SubmitAnswerResponse = {
   isCorrect: boolean;
-  confidenceScore: number;
-  cefrLevel: string;
-  progress: {
+  confidenceScore?: number;
+  cefrLevel?: string;
+  currentLevel?: string;
+  abilityScore?: number;
+  streakCorrect?: number;
+  streakWrong?: number;
+  canStopEarly?: boolean;
+  questionCount?: number;
+  minQuestions?: number;
+  maxQuestions?: number;
+  correctAnswer?: string;
+  progress?: {
     totalQuestions: number;
     answered: number;
     skipped: number;
@@ -35,6 +49,7 @@ export type SubmitAnswerResponse = {
   nextQuestion?: PlacementQuestion;
   completed: boolean;
   explanation?: string;
+  result?: PlacementResultData;
 };
 
 export type PlacementResultData = {
@@ -178,20 +193,20 @@ class PlacementService {
    * GET /api/student/placement/:sessionId/question
    */
   async getNextQuestion(
-    sessionId: number
+    sessionId: number,
+    demoMode: boolean = false
   ): Promise<
     | { completed: false; question: PlacementQuestion }
     | { completed: true; result: PlacementResultData }
   > {
     // BE returns { success: true, data: question } or { success: true, data: { completed, result } }
+    const url = `student/placement/${sessionId}/question` + (demoMode ? '?demo=1' : '');
     const res = await apiRequest<
       | PlacementQuestion
       | { completed: true; result: PlacementResultData }
       | { data: PlacementQuestion }
       | { data: { completed: true; result: PlacementResultData } }
-    >(`student/placement/${sessionId}/question`);
-
-    console.log('[DEBUG] getNextQuestion raw res:', JSON.stringify(res));
+    >(url);
 
     // Handle case where apiRequest returns the data directly (question object)
     if (res && typeof res === 'object') {
@@ -356,6 +371,28 @@ class PlacementService {
     return apiRequest<RetakeEligibility>("student/placement/retake-eligibility", {
       method: "GET",
     });
+  }
+
+  /**
+   * Get suggested courses based on placement level
+   * GET /api/student/placement/suggested-courses
+   */
+  async getSuggestedCourses(level: string, weakAreas?: string[]): Promise<any[]> {
+    const query = new URLSearchParams();
+    query.set("level", level);
+    if (weakAreas && weakAreas.length > 0) {
+      query.set("weakAreas", weakAreas.join(","));
+    }
+    query.set("_t", Date.now().toString());
+
+    const queryString = query.toString();
+    const res = await apiRequest<any[]>(
+      `student/placement/suggested-courses?${queryString}`,
+      {
+        method: "GET",
+      }
+    );
+    return res || [];
   }
 }
 

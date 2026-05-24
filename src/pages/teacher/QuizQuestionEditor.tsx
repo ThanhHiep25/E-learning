@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, Edit3, Trash2, FileText, Layout, CheckCircle2, Loader2, X, FileQuestion, ArrowLeft, Calendar } from 'lucide-react';
+import { Plus, Edit3, Trash2, FileText, Layout, CheckCircle2, Loader2, X, FileQuestion, ArrowLeft, Calendar, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
     teacherService,
@@ -8,9 +8,15 @@ import {
     type BackendTeacherQuizDetail,
 } from '../../services/teacher.service';
 
-const QuizQuestionEditor: React.FC = () => {
-    const { id } = useParams<{ id: string }>();
+interface QuizQuestionEditorProps {
+    quizId?: string;
+    isDrawer?: boolean; // When true, render in drawer mode (hide header, navigation buttons)
+}
+
+const QuizQuestionEditor: React.FC<QuizQuestionEditorProps> = ({ quizId: propQuizId, isDrawer = false }) => {
+    const { id: urlQuizId } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const quizId = propQuizId || urlQuizId;
 
     const [quizDetail, setQuizDetail] = useState<BackendTeacherQuizDetail | null>(null);
     const [questionLoading, setQuestionLoading] = useState(false);
@@ -31,6 +37,7 @@ const QuizQuestionEditor: React.FC = () => {
     const [editEndTime, setEditEndTime] = useState('');
     const [editShowResults, setEditShowResults] = useState(true);
     const [isUpdatingQuiz, setIsUpdatingQuiz] = useState(false);
+    const [isPublishing, setIsPublishing] = useState(false);
 
     const [qType, setQType] = useState<BackendTeacherQuestion['type']>('multiple_choice');
     const [qText, setQText] = useState('');
@@ -73,10 +80,10 @@ const QuizQuestionEditor: React.FC = () => {
     };
 
     const reloadQuizDetail = useCallback(async () => {
-        if (!id) return;
+        if (!quizId) return;
         try {
             setQuestionLoading(true);
-            const detail = await teacherService.getQuiz(String(id));
+            const detail = await teacherService.getQuiz(String(quizId));
             setQuizDetail(detail);
         } catch (err: any) {
             toast.error(err?.message || 'Không thể tải chi tiết quiz');
@@ -85,7 +92,7 @@ const QuizQuestionEditor: React.FC = () => {
                 setQuestionLoading(false);
             }, 1000);
         }
-    }, [id]);
+    }, [quizId]);
 
     useEffect(() => {
         reloadQuizDetail();
@@ -133,10 +140,10 @@ const QuizQuestionEditor: React.FC = () => {
     };
 
     const submitUpdateQuiz = async () => {
-        if (!id) return;
+        if (!quizId) return;
         try {
             setIsUpdatingQuiz(true);
-            await teacherService.updateQuiz(String(id), {
+            await teacherService.updateQuiz(String(quizId), {
                 title: editTitle,
                 description: editDescription,
                 timeLimit: editTimeLimit,
@@ -238,7 +245,7 @@ const QuizQuestionEditor: React.FC = () => {
 
     const submitAddQuestion = async () => {
         const content = buildContentWithMedia(qText, qImageUrl, qAudioUrl, qVideoUrl);
-        if (!id) {
+        if (!quizId) {
             toast.error('Quiz không hợp lệ');
             return;
         }
@@ -290,7 +297,7 @@ const QuizQuestionEditor: React.FC = () => {
                 });
                 toast.success('Đã cập nhật câu hỏi');
             } else {
-                await teacherService.addQuestion(String(id), {
+                await teacherService.addQuestion(String(quizId), {
                     type: qType,
                     content,
                     options,
@@ -330,45 +337,85 @@ const QuizQuestionEditor: React.FC = () => {
         }
     };
 
+    const handlePublishQuiz = async () => {
+        if (!quizId) return;
+        try {
+            setIsPublishing(true);
+            await teacherService.publishAIQuiz(quizId);
+            toast.success('Đã publish quiz thành công!');
+            await reloadQuizDetail();
+        } catch (err: any) {
+            toast.error(err?.message || 'Không thể publish quiz');
+        } finally {
+            setIsPublishing(false);
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-20">
-            <div className=" mx-auto px-4">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-                    <div>
-                        <button
-                            onClick={() => navigate('/teacher/quizzes')}
-                            className="group flex items-center gap-3 text-gray-400 hover:text-amber-600 font-black uppercase tracking-widest text-[10px] transition-all cursor-pointer mb-4"
-                        >
-                            <div className="p-2 bg-white rounded-xl shadow-sm group-hover:bg-amber-50 transition-all">
-                                <ArrowLeft size={14} />
+        <div className={isDrawer ? "h-full flex flex-col" : "min-h-screen bg-gray-50/50 pb-20"}>
+            <div className={isDrawer ? "flex-1 overflow-y-auto p-8" : " mx-auto px-4"}>
+                {/* Header - Hide in drawer mode */}
+                {!isDrawer && (
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+                        <div>
+                            <button
+                                onClick={() => navigate('/teacher/quizzes')}
+                                className="group flex items-center gap-3 text-gray-400 hover:text-amber-600 font-black uppercase tracking-widest text-[10px] transition-all cursor-pointer mb-4"
+                            >
+                                <div className="p-2 bg-white rounded-xl shadow-sm group-hover:bg-amber-50 transition-all">
+                                    <ArrowLeft size={14} />
+                                </div>
+                                Quay lại danh sách
+                            </button>
+                            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Soạn thảo bộ câu hỏi</h1>
+                            <div className="flex items-center gap-4 mt-1">
+                                <div className="text-sm font-bold text-amber-600 uppercase tracking-widest flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+                                    {quizDetail?.title || 'Đang tải...'}
+                                </div>
+                                {quizDetail && (
+                                    <button
+                                        onClick={openEditQuiz}
+                                        className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-sm font-bold border border-amber-100 hover:bg-amber-100 transition-all flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <Edit3 size={10} /> Sửa thông tin
+                                    </button>
+                                )}
                             </div>
-                            Quay lại danh sách
-                        </button>
-                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Soạn thảo bộ câu hỏi</h1>
-                        <div className="flex items-center gap-4 mt-1">
-                            <div className="text-sm font-bold text-amber-600 uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-                                {quizDetail?.title || 'Đang tải...'}
-                            </div>
-                            {quizDetail && (
+                        </div>
+
+                        {/* Right side: Save & Return button */}
+                        <div className="flex items-center gap-3">
+                            {quizDetail?.status === 'draft' && (
                                 <button
-                                    onClick={openEditQuiz}
-                                    className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-sm font-bold border border-amber-100 hover:bg-amber-100 transition-all flex items-center gap-2 cursor-pointer"
+                                    onClick={handlePublishQuiz}
+                                    disabled={isPublishing}
+                                    className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-4 rounded-[24px] font-bold text-sm hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 active:scale-95 cursor-pointer disabled:opacity-50"
                                 >
-                                    <Edit3 size={10} /> Sửa thông tin
+                                    {isPublishing ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                                    {isPublishing ? 'Đang publish...' : 'Publish'}
+                                </button>
+                            )}
+                            {quizDetail?.course?.id && (
+                                <button
+                                    onClick={() => navigate(`/teacher/content-editor/${quizDetail?.course?.id}`)}
+                                    className="flex items-center gap-3 bg-emerald-600 text-white px-8 py-5 rounded-[28px] font-bold text-sm hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200 active:scale-95 cursor-pointer"
+                                >
+                                    <Save size={20} />
+                                    Lưu & Quay lại
                                 </button>
                             )}
                         </div>
                     </div>
-                </div>
+                )}
 
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+                <div className={isDrawer ? "flex flex-col gap-6" : "grid grid-cols-1 xl:grid-cols-12 gap-10"}>
                     {/* Left Side: Question List */}
-                    <div className="xl:col-span-4 flex flex-col">
-                        <div className="bg-white rounded-[40px] border border-gray-100 p-8 flex flex-col min-h-[500px] shadow-sm sticky top-28">
-                            <div className="flex items-center justify-between mb-8">
+                    <div className={isDrawer ? "flex-1" : "xl:col-span-4 flex flex-col"}>
+                        <div className={isDrawer ? "bg-white rounded-2xl border border-gray-100 p-6 flex flex-col" : "bg-white rounded-[40px] border border-gray-100 p-8 flex flex-col min-h-[500px] shadow-sm sticky top-28"}>
+                            <div className="flex items-center justify-between mb-6">
                                 <div>
-                                    <div className="text-xl font-bold text-gray-900">Danh sách câu hỏi</div>
+                                    <div className={isDrawer ? "text-lg font-bold text-gray-900" : "text-xl font-bold text-gray-900"}>Danh sách câu hỏi</div>
                                     <div className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest">
                                         {questionLoading ? 'Đang tải...' : `${(quizDetail?.questions || []).length} câu hỏi`}
                                     </div>
@@ -378,11 +425,11 @@ const QuizQuestionEditor: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[600px]">
+                            <div className={isDrawer ? "flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar max-h-[400px]" : "flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[600px]"}>
                                 {(quizDetail?.questions || []).map((q, idx) => {
                                     const m = extractMedia(String(q.content || ''));
                                     return (
-                                        <div key={String(q.id)} className="group bg-gray-50/50 rounded-3xl border border-gray-100 p-5 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 transition-all duration-300 relative overflow-hidden">
+                                        <div key={String(q.id)} className={isDrawer ? "group bg-gray-50/50 rounded-2xl border border-gray-100 p-4 hover:bg-white hover:shadow-lg hover:shadow-gray-200/50 transition-all duration-300 relative overflow-hidden" : "group bg-gray-50/50 rounded-3xl border border-gray-100 p-5 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 transition-all duration-300 relative overflow-hidden"}>
                                             <div className="flex items-start justify-between gap-4 relative z-10">
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-2 mb-2">
@@ -420,24 +467,24 @@ const QuizQuestionEditor: React.FC = () => {
                     </div>
 
                     {/* Right Side: Add Question Form */}
-                    <div className="xl:col-span-8 space-y-8 pb-20">
-                        <div className="bg-white rounded-[48px] border border-gray-100 p-10 shadow-xl shadow-gray-200/50">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-10">
+                    <div className={isDrawer ? "space-y-6" : "xl:col-span-8 space-y-8 pb-20"}>
+                        <div className={isDrawer ? "bg-white rounded-2xl border border-gray-100 p-6 shadow-lg shadow-gray-200/50" : "bg-white rounded-[48px] border border-gray-100 p-10 shadow-xl shadow-gray-200/50"}>
+                            <div className={isDrawer ? "flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6" : "flex flex-col md:flex-row md:items-center justify-between gap-8 mb-10"}>
                                 <div>
-                                    <div className="text-2xl font-bold text-gray-900 tracking-tight">
+                                    <div className={isDrawer ? "text-xl font-bold text-gray-900 tracking-tight" : "text-2xl font-bold text-gray-900 tracking-tight"}>
                                         {editingQuestionId ? 'Cập nhật câu hỏi' : 'Thêm câu hỏi mới'}
                                     </div>
-                                    <div className="text-sm text-gray-400 mt-1">
+                                    <div className={isDrawer ? "text-xs text-gray-400 mt-1" : "text-sm text-gray-400 mt-1"}>
                                         {editingQuestionId ? 'Bạn đang ở chế độ chỉnh sửa câu hỏi hiện có' : 'Thiết lập chi tiết nội dung, tài nguyên và đáp án'}
                                     </div>
                                 </div>
 
-                                <div className=" p-5 rounded-[28px] flex items-center gap-6">
+                                <div className={isDrawer ? "p-3 rounded-2xl flex items-center gap-4" : "p-5 rounded-[28px] flex items-center gap-6"}>
                                     <div className="text-xs font-bold text-gray-400 uppercase whitespace-nowrap">Số điểm</div>
                                     <select
                                         value={qPoints}
                                         onChange={(e) => setQPoints(Number(e.target.value))}
-                                        className="w-24 bg-white rounded-2xl px-5 py-3 border border-gray-200 font-bold text-gray-900 outline-none focus:ring-8 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-center text-lg cursor-pointer appearance-none"
+                                        className={isDrawer ? "w-20 bg-white rounded-xl px-4 py-2 border border-gray-200 font-bold text-gray-900 outline-none focus:ring-4 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-center text-base cursor-pointer appearance-none" : "w-24 bg-white rounded-2xl px-5 py-3 border border-gray-200 font-bold text-gray-900 outline-none focus:ring-8 focus:ring-amber-500/5 focus:border-amber-500 transition-all text-center text-lg cursor-pointer appearance-none"}
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
                                             <option key={v} value={v}>{v}</option>
@@ -446,7 +493,7 @@ const QuizQuestionEditor: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="space-y-10">
+                            <div className={isDrawer ? "space-y-6" : "space-y-10"}>
                                 {/* Question Type Selection */}
                                 <div className="space-y-4">
                                     <div className="text-xs font-bold text-gray-400 uppercase flex items-center gap-3 ml-2">

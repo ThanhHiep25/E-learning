@@ -1,11 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, ChevronLeft, ChevronRight, LayoutGrid, List, Brain } from 'lucide-react';
+import { useSearchParams, useParams } from 'react-router-dom';
+import { Search, Filter, ChevronLeft, ChevronRight, LayoutGrid, List, Brain, Compass, BookOpenCheck } from 'lucide-react';
 import CourseCard from '../components/home/CourseCard';
 import { useCourseStore } from '../store/useCourseStore';
+import { useEnrollmentStore } from '../store/useEnrollmentStore';
+import { useAuth } from '../context/AuthContext';
 import { categoryService } from '../services/category.service';
 import LearningPathAssistant from '../components/learning-path/LearningPathAssistant';
 import { type FrontendCourse } from '../services/course.service';
+import { Breadcrumb } from '../components/common/Breadcrumb';
 
 const PAGE_SIZE = 6;
 
@@ -14,20 +17,38 @@ const SORT_OPTIONS = [
     { label: 'Đánh giá cao nhất', value: 'rating' }
 ];
 
+// CEFR to course level mapping
+const CEFR_TO_COURSE_LEVEL: Record<string, string> = {
+    'A1': 'beginner',
+    'A2': 'elementary',
+    'B1': 'intermediate',
+    'B2': 'upper-intermediate',
+    'C1': 'advanced',
+    'C2': 'proficiency',
+};
+
 const Courses: React.FC = () => {
     const [searchParams] = useSearchParams();
+    const { category: categoryParam } = useParams<{ category?: string }>();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Tất cả');
+    const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState('latest');
     const { courses, loadCourses } = useCourseStore();
+    const { enrolledCourses, syncEnrollments, courseProgress } = useEnrollmentStore();
+    const { user } = useAuth();
     const [categories, setCategories] = useState<string[]>(['Tất cả']);
     const [currentPage, setCurrentPage] = useState(1);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'explore' | 'enrolled'>('explore');
 
     useEffect(() => {
         loadCourses();
-    }, []);
+        if (user) {
+            syncEnrollments();
+        }
+    }, [user]);
 
     useEffect(() => {
         let mounted = true;
@@ -53,17 +74,40 @@ const Courses: React.FC = () => {
         };
     }, []);
 
-    // Sync state with URL params if any (after categories loaded)
+    // Sync state with URL params (path param or query param)
     useEffect(() => {
-        const cat = searchParams.get('category');
+        // Priority: path param > query param
+        const catFromPath = categoryParam ? decodeURIComponent(categoryParam) : null;
+        const catFromQuery = searchParams.get('category');
+        const cat = catFromPath || catFromQuery;
+
         if (cat && categories.includes(cat)) {
             setSelectedCategory(cat);
+        } else if (!cat) {
+            setSelectedCategory('Tất cả');
         }
-    }, [searchParams, categories]);
 
-    // Filtering & Sorting Logic
+        // Sync level from query param
+        const levelFromQuery = searchParams.get('level');
+        setSelectedLevel(levelFromQuery);
+    }, [searchParams, categoryParam, categories]);
+
+    // Get enrolled course IDs for filtering
+    const enrolledCourseIds = useMemo(() => {
+        return new Set(enrolledCourses.map(c => c.id));
+    }, [enrolledCourses]);
+
+    // Filtering & Sorting Logic based on active tab
     const filteredCourses = useMemo(() => {
         let result = [...courses];
+
+        // Filter by tab: explore (not enrolled) vs enrolled
+        if (activeTab === 'explore') {
+            result = result.filter(c => !enrolledCourseIds.has(c.id));
+        } else if (activeTab === 'enrolled') {
+            // For enrolled tab, use enrolled courses list
+            return enrolledCourses;
+        }
 
         // Search
         if (searchQuery) {
@@ -78,17 +122,33 @@ const Courses: React.FC = () => {
             result = result.filter(c => c.category === selectedCategory);
         }
 
-        // Sort
+        // Level filter removed - show all courses, use level only for sorting priority
+        // This allows users to see all options including higher level courses for leveling up
+
+        // Sort - if level filter is active, prioritize same level first then ascending
         result.sort((a, b) => {
             if (sortBy === 'rating') {
                 return b.rating - a.rating;
+            }
+            // If level filter is set, sort: same level → next levels up in order → lower levels last
+            if (selectedLevel && CEFR_TO_COURSE_LEVEL[selectedLevel]) {
+                const LEVELS = ['beginner', 'elementary', 'intermediate', 'upper-intermediate', 'advanced', 'proficiency'];
+                const userLevelIdx = LEVELS.indexOf(CEFR_TO_COURSE_LEVEL[selectedLevel]);
+                const aLevelIdx = LEVELS.indexOf(a.level);
+                const bLevelIdx = LEVELS.indexOf(b.level);
+                // distance: 0 = same, positive = above user, negative = below user
+                const aDist = aLevelIdx - userLevelIdx;
+                const bDist = bLevelIdx - userLevelIdx;
+                // Sort key: same (0) → 1 above → 2 above → ... → below (large number)
+                const sortKey = (dist: number) => dist >= 0 ? dist : 1000 + Math.abs(dist);
+                if (sortKey(aDist) !== sortKey(bDist)) return sortKey(aDist) - sortKey(bDist);
             }
             // Default latest (by ID)
             return parseInt(b.id) - parseInt(a.id);
         });
 
         return result;
-    }, [courses, searchQuery, selectedCategory, sortBy]);
+    }, [courses, searchQuery, selectedCategory, selectedLevel, sortBy, activeTab, enrolledCourses, enrolledCourseIds]);
 
     // Pagination Logic
     const totalPages = Math.ceil(filteredCourses.length / PAGE_SIZE);
@@ -111,6 +171,15 @@ const Courses: React.FC = () => {
             {/* Header / Hero Section */}
             <div className="bg-gray-900 border-b border-gray-100 pt-16 pb-12">
                 <div className="max-w-7xl mx-auto px-4">
+                    {/* Breadcrumb */}
+                    <div className="mb-4">
+                        <Breadcrumb 
+                            items={[
+                                { label: 'Danh mục khóa học' }
+                            ]}
+                            className="text-white"
+                        />
+                    </div>
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                         <div className="space-y-4">
                             <div className="flex flex-row items-center gap-4">
@@ -139,6 +208,52 @@ const Courses: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Tabs - Only show for logged-in users */}
+            {user && (
+                <div className="max-w-7xl mx-auto px-4 mt-6">
+                    <div className="bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm inline-flex">
+                        <button
+                            onClick={() => {
+                                setActiveTab('explore');
+                                setCurrentPage(1);
+                            }}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
+                                activeTab === 'explore'
+                                    ? 'bg-slate-900 text-white shadow-md'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            <Compass size={18} />
+                            Khám phá
+                            <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                                activeTab === 'explore' ? 'bg-white/20' : 'bg-gray-100'
+                            }`}>
+                                {courses.length - enrolledCourses.length}
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                setActiveTab('enrolled');
+                                setCurrentPage(1);
+                            }}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
+                                activeTab === 'enrolled'
+                                    ? 'bg-emerald-600 text-white shadow-md'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            <BookOpenCheck size={18} />
+                            Đã đăng ký
+                            <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                                activeTab === 'enrolled' ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'
+                            }`}>
+                                {enrolledCourses.length}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="max-w-7xl mx-auto px-4 mt-10">
                 <div className="flex flex-col lg:flex-row gap-8">
@@ -206,9 +321,19 @@ const Courses: React.FC = () => {
                     <main className="flex-1 space-y-8">
                         {/* Control Bar */}
                         <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <p className="text-sm text-gray-500">
-                                Hiển thị <span className="font-bold text-gray-900">{filteredCourses.length}</span> khóa học
-                            </p>
+                            <div className="flex items-center gap-3">
+                                <p className="text-sm text-gray-500">
+                                    Hiển thị <span className="font-bold text-gray-900">{filteredCourses.length}</span> khóa học
+                                </p>
+                                {activeTab === 'enrolled' && (
+                                    <span className="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-full">
+                                        Tiến độ trung bình: {Math.round(
+                                            enrolledCourses.reduce((sum, c) => sum + (courseProgress[c.id] || 0), 0) / 
+                                            (enrolledCourses.length || 1)
+                                        )}%
+                                    </span>
+                                )}
+                            </div>
 
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
@@ -243,7 +368,11 @@ const Courses: React.FC = () => {
                             <div className={`grid gap-2 md:gap-8 ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
                                 {paginatedCourses.map((course: FrontendCourse) => (
                                     <div key={course.id}>
-                                        <CourseCard course={course} />
+                                        <CourseCard
+                                            course={course}
+                                            progress={activeTab === 'enrolled' ? courseProgress[course.id] : undefined}
+                                            isEnrolled={activeTab === 'enrolled'}
+                                        />
                                     </div>
                                 ))}
                             </div>
@@ -252,8 +381,14 @@ const Courses: React.FC = () => {
                                 <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <Search className="text-gray-300" size={32} />
                                 </div>
-                                <h3 className="text-lg font-bold text-gray-800">Không tìm thấy khóa học nào</h3>
-                                <p className="text-gray-500 text-sm">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm của bạn.</p>
+                                <h3 className="text-lg font-bold text-gray-800">
+                                    {activeTab === 'enrolled' ? 'Bạn chưa đăng ký khóa học nào' : 'Không tìm thấy khóa học nào'}
+                                </h3>
+                                <p className="text-gray-500 text-sm">
+                                    {activeTab === 'enrolled' 
+                                        ? 'Hãy khám phá và đăng ký các khóa học thú vị bên dưới.' 
+                                        : 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm của bạn.'}
+                                </p>
                                 <button
                                     onClick={() => {
                                         setSearchQuery('');

@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Bell, CheckCheck, Trash2, Search,
     Calendar, BookOpen, CreditCard, Megaphone,
     ShieldAlert, Heart, ChevronRight, X,
-    ChevronDown
+    ChevronDown, ArrowRight
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { safeFormat } from '../utils/dateUtils';
 import type { NotificationType, Notification } from '../services/notification.service';
 
 const Notifications: React.FC = () => {
+    const navigate = useNavigate();
     const {
         notifications,
         unreadCount,
@@ -26,6 +28,58 @@ const Notifications: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'read'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+
+    // Navigate based on notification type (same logic as useNotificationDeepLink)
+    const handleNavigate = (notification: Notification) => {
+        const { type, payload = {} } = notification;
+        const { courseId, quizId, topicId } = payload;
+
+        switch (type) {
+            case 'enrollment':
+            case 'enrollment_success':
+            case 'enrollment_renewal':
+                if (courseId) {
+                    navigate(`/course/${courseId}/lesson`);
+                } else {
+                    navigate('/my-learning');
+                }
+                break;
+            case 'quiz':
+            case 'quiz_reminder':
+                if (quizId) {
+                    navigate(`/quiz/${quizId}`);
+                } else if (courseId) {
+                    navigate(`/course/${courseId}`);
+                }
+                break;
+            case 'payment':
+                navigate('/payment-history');
+                break;
+            case 'forum':
+            case 'forum_reply':
+                if (topicId) {
+                    navigate(`/forum/topic/${topicId}`);
+                } else {
+                    navigate('/forum');
+                }
+                break;
+            case 'certificate':
+                if (courseId) {
+                    navigate(`/course/${courseId}/lesson`);
+                }
+                break;
+            case 'course_update':
+            case 'chapter_complete':
+                if (courseId) {
+                    navigate(`/course/${courseId}/lesson`);
+                }
+                break;
+            default:
+                // Stay on notifications page if no specific route
+                break;
+        }
+        setSelectedNotification(null);
+    };
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -299,12 +353,33 @@ const Notifications: React.FC = () => {
                                 </p>
                             </div>
 
-                            <button
-                                onClick={() => setSelectedNotification(null)}
-                                className="w-full py-5 bg-slate-900 text-white rounded-[24px] text-sm cursor-pointer font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 active:scale-[0.98]"
-                            >
-                                Đã hiểu
-                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setSelectedNotification(null)}
+                                    className="flex-1 py-5 bg-slate-100 text-slate-600 rounded-[24px] text-sm cursor-pointer font-bold hover:bg-slate-200 transition-all active:scale-[0.98]"
+                                >
+                                    Đóng
+                                </button>
+                                {(selectedNotification.type === 'enrollment' ||
+                                  selectedNotification.type === 'enrollment_success' ||
+                                  selectedNotification.type === 'enrollment_renewal' ||
+                                  selectedNotification.type === 'quiz' ||
+                                  selectedNotification.type === 'quiz_reminder' ||
+                                  selectedNotification.type === 'forum' ||
+                                  selectedNotification.type === 'forum_reply' ||
+                                  selectedNotification.type === 'course_update' ||
+                                  selectedNotification.type === 'chapter_complete' ||
+                                  selectedNotification.type === 'certificate' ||
+                                  selectedNotification.payload?.courseId) && (
+                                    <button
+                                        onClick={() => handleNavigate(selectedNotification)}
+                                        className="flex-[2] py-5 bg-slate-900 text-white rounded-[24px] text-sm cursor-pointer font-bold hover:bg-amber-600 transition-all shadow-xl shadow-slate-900/10 active:scale-[0.98] flex items-center justify-center gap-2"
+                                    >
+                                        Xem chi tiết
+                                        <ArrowRight size={16} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

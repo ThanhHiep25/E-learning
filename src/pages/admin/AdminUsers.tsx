@@ -1,13 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, Loader2, Plus, Search, Trash2, UserRoundKey, X, ShieldOff, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Plus, Search, Trash2, UserRoundKey, X, ShieldOff, CheckCircle, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
 import { forumService } from '../../services/forum.service';
 import toast from 'react-hot-toast';
 import { adminService, type BackendAdminUser } from '../../services/admin.service';
 
-const AdminUsers: React.FC = () => {
+interface AdminUsersProps {
+  defaultRoleFilter?: 'all' | 'student' | 'teacher' | 'admin';
+  hideRoleFilter?: boolean;
+  pageTitle?: string;
+  pageSubtitle?: string;
+  icon?: React.ReactNode;
+  onRowClick?: (user: BackendAdminUser) => void;
+  showViewButton?: boolean;
+  /** Show promote/demote buttons for role management */
+  enableRoleActions?: boolean;
+}
+
+const AdminUsers: React.FC<AdminUsersProps> = ({
+  defaultRoleFilter = 'all',
+  hideRoleFilter = false,
+  pageTitle = 'Quản lý người dùng',
+  pageSubtitle = 'Tạo / phân quyền / xóa user',
+  icon = null,
+  onRowClick,
+  showViewButton = false,
+}) => {
   const [users, setUsers] = useState<BackendAdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'teacher' | 'admin'>(defaultRoleFilter);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createUsername, setCreateUsername] = useState('');
@@ -29,6 +54,9 @@ const AdminUsers: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Export CSV State
+  const [exporting, setExporting] = useState(false);
+
   // Ban User State
   const [banUserTarget, setBanUserTarget] = useState<BackendAdminUser | null>(null);
   const [isBanModalOpen, setIsBanModalOpen] = useState(false);
@@ -39,29 +67,93 @@ const AdminUsers: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await adminService.listUsers();
+      // Nếu có roleFilter cụ thể, dùng API filter; nếu 'all' thì lấy tất cả
+      let data: BackendAdminUser[];
+      if (roleFilter !== 'all') {
+        data = await adminService.listUsersByRole(roleFilter);
+      } else {
+        data = await adminService.listUsers();
+      }
       setUsers(data);
     } catch (e: any) {
       toast.error(e?.message || 'Lỗi tải danh sách user');
     } finally {
-      setTimeout(() => {
-        setLoading(false);
-      }, 1000);
+      // 🛡️ P2-4 FIX: Remove artificial delay, set loading false immediately
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     load();
-  }, []);
+  }, [roleFilter]); // Reload khi roleFilter thay đổi
+
+  // Export CSV Handler
+  const handleExportCSV = async () => {
+    try {
+      setExporting(true);
+      // 🛡️ P1-1 FIX: Removed console.log that exposes token
+      const blob = await adminService.exportUsersCSV(
+        roleFilter !== 'all' ? roleFilter : undefined
+      );
+      
+      // Download file
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `users-${roleFilter !== 'all' ? roleFilter : 'all'}-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Đã tải xuống file CSV');
+    } catch (e: any) {
+      console.error('[ExportCSV] Error:', e);
+      toast.error(e?.message || 'Lỗi xuất CSV');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const filtered = useMemo(() => {
+    let result = [...users];
+    
+    // Filter by role
+    if (roleFilter !== 'all') {
+      result = result.filter((u) => u.role === roleFilter);
+    }
+    
+    // Search filter
     const s = q.trim().toLowerCase();
-    if (!s) return users;
-    return users.filter((u) => {
-      const hay = `${u.name} ${u.username || ''} ${u.email} ${u.role}`.toLowerCase();
-      return hay.includes(s);
-    });
-  }, [users, q]);
+    if (s) {
+      result = result.filter((u) => {
+        const hay = `${u.name} ${u.username || ''} ${u.email} ${u.role}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+    
+    return result;
+  }, [users, q, roleFilter]);
+
+  // Stats calculation
+  const stats = useMemo(() => ({
+    total: users.length,
+    students: users.filter(u => u.role === 'student').length,
+    teachers: users.filter(u => u.role === 'teacher').length,
+    admins: users.filter(u => u.role === 'admin').length,
+  }), [users]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  }, [filtered, currentPage]);
+
+  // Reset to page 1 when search or role filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [q, roleFilter]);
 
   const onCreate = async () => {
     try {
@@ -101,14 +193,9 @@ const AdminUsers: React.FC = () => {
     }
   };
 
-  const onChangeRole = async (u: BackendAdminUser, role: 'student' | 'teacher') => {
-    try {
-      await adminService.updateUser(String(u.id), { role });
-      toast.success('Cập nhật role thành công');
-      setUsers((prev) => prev.map((x) => (String(x.id) === String(u.id) ? { ...x, role } : x)));
-    } catch (e: any) {
-      toast.error(e?.message || 'Cập nhật role thất bại');
-    }
+  const onDelete = async (u: BackendAdminUser) => {
+    setDeleteUserTarget(u);
+    setIsDeleteModalOpen(true);
   };
 
   const onResetPassword = (u: BackendAdminUser) => {
@@ -142,11 +229,6 @@ const AdminUsers: React.FC = () => {
     } finally {
       setIsResetting(false);
     }
-  };
-
-  const onDelete = (u: BackendAdminUser) => {
-    setDeleteUserTarget(u);
-    setIsDeleteModalOpen(true);
   };
 
   const handleDeleteUser = async () => {
@@ -210,21 +292,80 @@ const AdminUsers: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-4xl font-black text-gray-900">Quản lý người dùng</h1>
-            <p className="text-gray-500 font-medium mt-1">Tạo / phân quyền / xóa user</p>
+            <div className="flex items-center gap-3">
+              {icon && <div className="text-amber-500">{icon}</div>}
+              <h1 className="text-4xl font-black text-gray-900">{pageTitle}</h1>
+            </div>
+            <p className="text-gray-500 font-medium mt-1">{pageSubtitle}</p>
           </div>
 
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-2 bg-gray-900 text-white px-5 py-3 rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl shadow-gray-200 active:scale-95 cursor-pointer"
-          >
-            <Plus size={18} />
-            TẠO USER
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              disabled={exporting}
+              className="flex items-center gap-2 bg-white border-2 border-gray-200 text-gray-700 px-5 py-3 rounded-2xl font-bold hover:border-amber-500 hover:text-amber-600 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            >
+              {exporting ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18} />}
+              EXPORT CSV
+            </button>
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="flex items-center gap-2 bg-gray-900 text-white px-5 py-3 rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl shadow-gray-200 active:scale-95 cursor-pointer"
+            >
+              <Plus size={18} />
+              TẠO USER
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-6 mb-6">
-          <div className="flex items-center gap-3">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+            <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Tổng users</p>
+            <p className="text-2xl font-black text-gray-900 mt-1">{stats.total}</p>
+          </div>
+          <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
+            <p className="text-[11px] font-black text-blue-600 uppercase tracking-wider">Học viên</p>
+            <p className="text-2xl font-black text-blue-700 mt-1">{stats.students}</p>
+          </div>
+          <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
+            <p className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">Giảng viên</p>
+            <p className="text-2xl font-black text-emerald-700 mt-1">{stats.teachers}</p>
+          </div>
+          <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
+            <p className="text-[11px] font-black text-purple-600 uppercase tracking-wider">Quản trị</p>
+            <p className="text-2xl font-black text-purple-700 mt-1">{stats.admins}</p>
+          </div>
+        </div>
+
+        {/* Filter & Search */}
+        <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-6 mb-6 space-y-4">
+          {/* Role Filter Buttons - ẩn khi hideRoleFilter=true */}
+          {!hideRoleFilter && (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'all', label: 'Tất cả', color: 'bg-gray-900 text-white' },
+                { key: 'student', label: 'Học viên', color: 'bg-blue-500 text-white' },
+                { key: 'teacher', label: 'Giảng viên', color: 'bg-emerald-500 text-white' },
+                { key: 'admin', label: 'Quản trị', color: 'bg-purple-500 text-white' },
+              ].map((btn) => (
+                <button
+                  key={btn.key}
+                  onClick={() => setRoleFilter(btn.key as any)}
+                  className={`px-4 py-2 rounded-xl font-bold text-xs transition-all ${
+                    roleFilter === btn.key
+                      ? btn.color
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Search Input */}
+          <div className={`flex items-center gap-3 ${!hideRoleFilter ? 'pt-4 border-t border-gray-50' : ''}`}>
             <div className="p-2 bg-gray-50 rounded-xl text-gray-400">
               <Search size={18} />
             </div>
@@ -260,8 +401,12 @@ const AdminUsers: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filtered.map((u) => (
-                    <tr key={String(u.id)} className="hover:bg-gray-50/50 transition-colors">
+                  {paginatedUsers.map((u) => (
+                    <tr 
+                      key={String(u.id)} 
+                      className={`transition-colors ${onRowClick ? 'cursor-pointer hover:bg-amber-50/60' : 'hover:bg-gray-50/50'}`}
+                      onClick={() => onRowClick && onRowClick(u)}
+                    >
                       <td className="px-6 py-5">
                         <div>
                           <div className="text-sm font-bold text-gray-900">{u.name}</div>
@@ -269,16 +414,19 @@ const AdminUsers: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-5">
-                        <select
-                          value={u.role}
-                          disabled={u.role === 'admin'}
-                          onChange={(e) => onChangeRole(u, e.target.value as any)}
-                          className="text-xs font-bold uppercase tracking-widest bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-gray-700"
-                        >
-                          <option value="student">STUDENT</option>
-                          <option value="teacher">TEACHER</option>
-                          <option value="admin">ADMIN</option>
-                        </select>
+                        {/* Role Badge */}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest ${
+                            u.role === 'student'
+                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                              : u.role === 'teacher'
+                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              : 'bg-purple-100 text-purple-700 border border-purple-200'
+                          }`}>
+                            {u.role === 'student' ? '👤 Học viên' : u.role === 'teacher' ? '👨‍🏫 Giảng viên' : '🔒 Quản trị'}
+                          </span>
+
+                        </div>
                       </td>
                       <td className="px-6 py-5">
                         <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${u.isEmailVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-50 text-gray-500'}`}>
@@ -296,7 +444,16 @@ const AdminUsers: React.FC = () => {
                         )}
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          {showViewButton && onRowClick && (
+                            <button
+                              onClick={() => onRowClick(u)}
+                              className="cursor-pointer p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                              title="Xem chi tiết"
+                            >
+                              <Eye size={18} />
+                            </button>
+                          )}
                           <button
                             onClick={() => onResetPassword(u)}
                             className="cursor-pointer p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
@@ -332,21 +489,75 @@ const AdminUsers: React.FC = () => {
                       </td>
                     </tr>
                   ))}
-
-                  {filtered.length === 0 && (
+                  {paginatedUsers.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-6 py-16 text-center text-gray-500 font-bold">Không có dữ liệu người dùng "{q}"</td>
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-bold">
+                        Không tìm thấy user nào
+                      </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
           )}
+
+          {/* Pagination */}
+          {!loading && filtered.length > 0 && (
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="text-sm text-gray-500">
+                Hiển thị <span className="font-semibold">{Math.min((currentPage - 1) * itemsPerPage + 1, filtered.length)}</span> - <span className="font-semibold">{Math.min(currentPage * itemsPerPage, filtered.length)}</span> trong <span className="font-semibold">{filtered.length}</span> user
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft size={16} /> Trước
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-9 h-9 text-sm font-medium rounded-xl transition-all ${
+                          currentPage === pageNum
+                            ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:text-amber-600'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Sau <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* Create User Modal */}
         {isCreateOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-            <div className="w-full max-w-xl bg-white rounded-[28px] border border-gray-100 shadow-2xl overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+            <div className="relative w-full max-w-lg bg-white rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden scale-in-center transition-all duration-300">
               <div className="p-6 border-b border-gray-50">
                 <h3 className="text-lg font-bold text-gray-900">Tạo user mới</h3>
               </div>

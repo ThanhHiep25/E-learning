@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, Loader2, MessageSquare, RotateCcw, Trash2, BookOpen, X, Maximize2, History as HistoryIcon, ChevronLeft } from 'lucide-react';
+import { Send, User, Loader2, MessageSquare, Plus, Trash2, BookOpen, X, Maximize2, History as HistoryIcon, ChevronLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { aiService, type AiMessage, type AiConversation } from '../../services/ai.service';
@@ -16,7 +16,8 @@ interface AIChatModalProps {
 const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, lectureId }) => {
   const navigate = useNavigate();
 
-  const renderMessageContent = (content: string) => {
+  const renderMessageContent = (content: string | undefined | null) => {
+    if (!content) return null;
     // Pattern: COURSE_CARD(slug|title|level)
     const parts = content.split(/(COURSE_CARD\([^\)]+\))/g);
     return parts.map((part, i) => {
@@ -67,11 +68,11 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, le
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      initChat();
-    }
-  }, [isOpen, courseId, lectureId]);
+  // useEffect(() => {
+  //   if (isOpen) {
+  //     initChat();
+  //   }
+  // }, [isOpen, courseId, lectureId]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -89,20 +90,47 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, le
   };
 
 
-  const initChat = async () => {
-    setIsLoading(false);
-  };
+  // const initChat = async () => {
+  //   setIsLoading(true);
+  //   try {
+  //     const chat = await aiService.createConversation({
+  //       courseId,
+  //       lectureId,
+  //       title: 'AI Support Chat',
+  //     });
+  //     setConversation(chat);
+  //   } catch (err: any) {
+  //     console.error('Failed to init chat:', err);
+  //     toast.error('Lỗi khởi tạo chat: ' + (err.message || 'Unknown error'));
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
 
-  useEffect(() => {
-  }, []);
 
-  const handleRefresh = async () => {
+  const startNewChat = async () => {
     setMessages([]);
     setConversation(null);
+    setIsLoading(true);
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
-    toast.success('Đã làm mới cuộc trò chuyện');
+    try {
+      // Create new conversation with forceCreate = true
+      const chat = await aiService.createConversation({
+        courseId,
+        lectureId,
+        title: 'AI Support Chat',
+        forceCreate: true, // Force create new chat
+      });
+      setConversation(chat);
+      toast.success('Đã tạo đoạn chat mới');
+    } catch (err: any) {
+      console.error('Failed to create new chat:', err);
+      toast.error('Lỗi tạo chat mới: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const fetchHistory = async () => {
@@ -124,7 +152,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, le
       setMessages(messages);
     } catch (err: any) {
       toast.error('Không tìm thấy hội thoại, đang tạo chat mới...');
-      handleRefresh(); // Fallback to new chat
+      startNewChat(); // Fallback to new chat
     } finally {
       setIsLoading(false);
     }
@@ -156,19 +184,34 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, le
     setIsSending(true);
 
     try {
-      // Create conversation on the fly if it doesn't exist
+      // Create conversation on the fly with forceCreate when first message sent
       if (!currentConv) {
         currentConv = await aiService.createConversation({
           courseId,
           lectureId,
-          title: userMsg.substring(0, 30) + '...'
+          title: userMsg.substring(0, 30) + '...',
+          forceCreate: true
         });
+        console.log('Created conversation:', currentConv);
         setConversation(currentConv);
       }
 
+      if (!currentConv?.id) {
+        throw new Error('No conversation ID available');
+      }
+
+      console.log('Sending message with convId:', currentConv.id, typeof currentConv.id);
       const res = await aiService.sendMessage(currentConv.id, userMsg);
-      setMessages(prev => [...prev, { sender: 'ai', content: res.answer }]);
+      console.log('Send message response:', res);
+      
+      if (!res?.answer) {
+        console.error('AI response missing answer:', res);
+        setMessages(prev => [...prev, { sender: 'ai', content: 'Lỗi: AI không trả lời' }]);
+      } else {
+        setMessages(prev => [...prev, { sender: 'ai', content: res.answer }]);
+      }
     } catch (err: any) {
+      console.error('Send message error:', err);
       const errMsg = err.message || 'Lỗi kết nối AI';
       setMessages(prev => [...prev, { sender: 'ai', content: errMsg }]);
     } finally {
@@ -220,11 +263,11 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, le
                   <Maximize2 size={18} />
                 </button>
                 <button
-                  onClick={handleRefresh}
-                  title="Làm mới chat"
+                  onClick={startNewChat}
+                  title="Tạo đoạn chat mới"
                   className="p-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
                 >
-                  <RotateCcw size={18} />
+                  <Plus size={18} />
                 </button>
                 <button
                   onClick={fetchHistory}
@@ -312,7 +355,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose, courseId, le
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${msg.sender === 'user' ? 'bg-slate-900 text-white' : 'bg-amber-500 text-white'}`}>
                       {msg.sender === 'user' ? <User size={14} /> : <img src="/logoStill/elearning.png" alt="AI" className="w-5 h-5" />}
                     </div>
-                    <div className={`p-4 rounded-3xl text-sm leading-relaxed shadow-sm border ${msg.sender === 'user' ? 'bg-slate-900 text-white rounded-tr-none border-slate-900' : 'bg-white text-gray-700 border-gray-100 rounded-tl-none'}`}>
+                    <div className={`p-4 rounded-3xl text-sm leading-relaxed shadow-sm border max-w-full break-words ${msg.sender === 'user' ? 'bg-slate-900 text-white rounded-tr-none border-slate-900' : 'bg-white text-gray-700 border-gray-100 rounded-tl-none'}`}>
                       {msg.sender === 'user' ? (
                         msg.content
                       ) : (
